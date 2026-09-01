@@ -64,17 +64,35 @@ Everything except the plugin goes in the **game root** — the folder containing
 3. Create a `scripts\` folder in the game root if there isn't one. The built
    plugin DLL goes there — see the plugin section.
 
-### Story mode only, and the risks
+### BattlEye must be disabled — this is a required step
 
-Script Hook V does not run in GTA Online — it closes the game if you enter
-multiplayer — and this plugin aborts itself if it detects an online session on
-top of that.
+Enhanced ships **BattlEye** (`BattlEye\`, `GTA5_Enhanced_BE.exe`), and it is
+active in **story mode**, not just online. Because Script Hook V injects code,
+BattlEye treats it as a threat and kills the process — so with BattlEye running
+this plugin does not work at all.
 
-Be aware that Enhanced ships **BattlEye** (`BattlEye\`, `GTA5_Enhanced_BE.exe`).
-Loading an ASI into a BattlEye-protected build is a decision to make consciously:
-story-mode-only intent does not remove the anti-cheat from the process, and modding
-carries a risk to your Rockstar/Steam account. Legacy has no such complication if
-you would rather avoid the question.
+Disable BattlEye from your launcher (Steam / Epic / Rockstar) before expecting any
+of this to load. The exact option differs per launcher.
+
+**Disabling it locks you out of GTA Online**, which is a feature here rather than
+a cost: you cannot accidentally join a session with the plugin loaded. You get a
+"BattlEye is required to play GTA Online" screen instead.
+
+### Story mode only
+
+Three independent layers keep this out of multiplayer:
+
+1. BattlEye disabled — GTA Online refuses to launch.
+2. Script Hook V — closes GTA V if a multiplayer session is entered.
+3. This plugin — aborts itself if it detects an online session.
+
+**The real ban risk is going online with mod files present and detected**, which
+can mean suspension, a character reset, or a permanent ban. If you later want to
+play Online, re-enable BattlEye **and** remove the ASI files first — do not rely
+on just one of the two.
+
+Rockstar do not officially support single-player mods and reserve the right to
+act. Nothing here is a guarantee; the risk is yours to accept.
 
 ## Bring your own map image
 

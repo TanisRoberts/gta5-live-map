@@ -99,16 +99,12 @@ The plugin's HTTP server already serves static files, so it serves tiles as-is.
 
 ### 5b. Switchable layers
 
-Hold more than one base map and switch between them, the way the online map sites
-offer atlas, satellite, road and UV views.
+Hold more than one base map and switch between them. Client-side this is a
+Leaflet layer control plus one entry per layer rather than the single `mapImage`
+key used today. See items 7 and 8 for the layers themselves.
 
-**Note there is no satellite tile set in the game** — GTA V's map UI only ever
-draws the road/atlas style. Satellite views seen online are community renders of
-the 3D world, not extractable assets. So this is only worth building if a second
-base map actually turns up from somewhere.
-
-Client-side this is a Leaflet layer control plus one entry per layer rather than
-the single `mapImage` key used today.
+**MVP scope is the road map only.** Get one layer working and tested end to end
+before any of this.
 
 **The part to settle first:** one calibration only covers every layer if the
 images share dimensions and cover the same area. Mixing a pause-map screenshot at
@@ -135,3 +131,50 @@ most makes it feel like a satnav.
 
 It only gives the street at a point, not road geometry, so it does **not** on its
 own unlock routing (3c) — but it is the natural first step toward it.
+
+---
+
+*Items 7 and 8 are deliberately last. The MVP is the road map view alone; expand
+only once that is working and tested.*
+
+## 7. Satellite view
+
+A photographic-style base layer, as an alternative to the road map.
+
+The blocker is sourcing, not code — **GTA V ships no satellite tile set.** Its map
+UI only ever draws the road/atlas style, so there is nothing to extract that
+already looks like this. The satellite views on community map sites are renders
+someone produced from the 3D world.
+
+Realistic routes, none of them cheap:
+
+- Render it from the game's own terrain and map geometry (CodeWalker can view the
+  world in 3D; capturing a full orthographic top-down pass over the whole map is
+  a project in itself).
+- A community-made satellite image whose licence explicitly permits reuse.
+
+Do not scrape third-party tile servers. Whatever the source, it stays local and
+never gets committed.
+
+Once an image exists, it drops into the layer switcher (5b) and the tile pipeline
+(5a) with no new client work — assuming per-layer calibration is in place, since
+it will not share dimensions with the road map.
+
+## 8. Vectorised view
+
+A clean vector rendering — roads, water, district boundaries as paths rather than
+a raster image.
+
+Genuinely different from items 5 and 7, and the most work of the three: it is not
+an image at all. It would mean deriving road geometry and coastlines and drawing
+them as GeoJSON through Leaflet.
+
+What it buys, and why it might be worth it despite the effort:
+
+- Crisp at every zoom, with no tile pyramid and no memory cost.
+- Tiny compared with any raster map.
+- Styleable — dark mode that actually matches the UI (item 2), or a night theme.
+- The road geometry needed here is the **same data routing needs** (item 3c). If
+  vectorising ever happens, routing becomes far more tractable as a side effect.
+
+That shared dependency is the argument for doing 8 and 3c together, or not at all.

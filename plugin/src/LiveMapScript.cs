@@ -4,6 +4,7 @@ using System.IO;
 using System.Reflection;
 using System.Text;
 using GTA;
+using GTA.Chrono;
 using GTA.Math;
 using GTA.Native;
 
@@ -123,7 +124,7 @@ namespace GtaLiveMap
 
             Vector3 position = ped.Position;
             float heading = ped.Heading;
-            int wantedLevel = player.WantedLevel;
+            int wantedLevel = player.Wanted.WantedLevel;
 
             bool inVehicle = ped.IsInVehicle();
             Vehicle vehicle = inVehicle ? ped.CurrentVehicle : null;
@@ -143,7 +144,8 @@ namespace GtaLiveMap
                 speed = ped.Speed;
             }
 
-            TimeSpan clock = World.CurrentTimeOfDay;
+            int gameHour = GameClock.Hour;
+            int gameMinute = GameClock.Minute;
 
             StringBuilder sb = new StringBuilder(320);
             sb.Append("{\"x\":").Append(Json.Number(position.X));
@@ -155,8 +157,8 @@ namespace GtaLiveMap
             sb.Append(",\"vehicleDisplayName\":").Append(Json.String(vehicleName));
             sb.Append(",\"vehicleClass\":").Append(Json.String(vehicleClass));
             sb.Append(",\"wantedLevel\":").Append(Json.Number(wantedLevel));
-            sb.Append(",\"gameHour\":").Append(Json.Number(clock.Hours));
-            sb.Append(",\"gameMinute\":").Append(Json.Number(clock.Minutes));
+            sb.Append(",\"gameHour\":").Append(Json.Number(gameHour));
+            sb.Append(",\"gameMinute\":").Append(Json.Number(gameMinute));
             sb.Append(",\"t\":").Append(Json.Number(timestampMs));
             sb.Append('}');
 
@@ -169,8 +171,11 @@ namespace GtaLiveMap
         /// </summary>
         private static bool IsOnlineSession()
         {
-            return Function.Call<bool>(Hash.NETWORK_IS_MULTIPLAYER)
-                || Function.Call<bool>(Hash.NETWORK_IS_SESSION_ACTIVE);
+            // There is no NETWORK_IS_MULTIPLAYER in this API; a live network
+            // session is the thing we actually care about, and these two cover
+            // both an active session and one still starting up.
+            return Function.Call<bool>(Hash.NETWORK_IS_SESSION_ACTIVE)
+                || Function.Call<bool>(Hash.NETWORK_IS_SESSION_STARTED);
         }
 
         private void OnAborted(object sender, EventArgs e)

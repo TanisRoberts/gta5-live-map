@@ -1,0 +1,52 @@
+<!--
+  Optional. The supported build path is build.ps1, which uses the in-box
+  .NET Framework compiler and needs no SDK, Visual Studio or MSBuild.
+
+  This project file is here for when you do have the .NET SDK installed:
+
+      dotnet build plugin/LiveMap.csproj -c Release ^
+          -p:Shvdn3Path="D:\...\Grand Theft Auto V Enhanced\ScriptHookVDotNet3.dll"
+
+  LangVersion is pinned to 5 so both build paths accept the same sources.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>LiveMap</AssemblyName>
+    <RootNamespace>GtaLiveMap</RootNamespace>
+    <LangVersion>5</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Product>GTA V Live Map</Product>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src\**\*.cs" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(Shvdn3Path)' == ''">
+    <Shvdn3Path>D:\SteamLibrary\steamapps\common\Grand Theft Auto V Enhanced\ScriptHookVDotNet3.dll</Shvdn3Path>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="ScriptHookVDotNet3">
+      <HintPath>$(Shvdn3Path)</HintPath>
+      <!-- Supplied by the script host at runtime; never copy it to output. -->
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+
+  <Target Name="WarnIfNoReference" BeforeTargets="Build"
+          Condition="!Exists('$(Shvdn3Path)')">
+    <Warning Text="ScriptHookVDotNet3.dll not found at '$(Shvdn3Path)'. Install ScriptHookVDotNetEnhanced, or pass -p:Shvdn3Path=..." />
+  </Target>
+
+</Project>

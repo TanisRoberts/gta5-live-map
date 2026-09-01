@@ -24,14 +24,7 @@ gta5-live-map/
 
 - [x] Stage 1 — repo skeleton
 - [x] Stage 2 — web client, driven by the mock feed
-- [ ] Stage 3 — the C# plugin
-
-## Story mode only
-
-ScriptHookV refuses to load in GTA Online, so this code cannot run there. On top
-of that, the plugin checks for an online session on startup and on every tick,
-and aborts itself if one is detected. There is no networking code that talks to
-anything but your own LAN.
+- [~] Stage 3 — the C# plugin (written; needs a compile against ScriptHookVDotNet3.dll)
 
 ## Requirements (GTA V **Enhanced**)
 
@@ -71,8 +64,24 @@ active in **story mode**, not just online. Because Script Hook V injects code,
 BattlEye treats it as a threat and kills the process — so with BattlEye running
 this plugin does not work at all.
 
-Disable BattlEye from your launcher (Steam / Epic / Rockstar) before expecting any
-of this to load. The exact option differs per launcher.
+On Steam: **right-click the game → Properties → General → Launch Options**, and
+enter:
+
+```
+-nobattleye
+```
+
+Clearing that box re-enables it. Launch options live in your Steam user config
+rather than the game folder, so unlike deleting files they survive game updates
+and *Verify integrity of game files*.
+
+To confirm it worked, start story mode and check nothing is running:
+
+```
+Get-Process BEService_x64,BEService -ErrorAction SilentlyContinue
+```
+
+No output means BattlEye did not load.
 
 **Disabling it locks you out of GTA Online**, which is a feature here rather than
 a cost: you cannot accidentally join a session with the plugin loaded. You get a
@@ -172,6 +181,81 @@ points along the path as actually drawn.
 
 If the endpoint is down, polling backs off to a couple of seconds rather than
 hammering it ten times a second.
+
+## The plugin
+
+A ScriptHookVDotNet 3 script that samples the player each tick and serves the
+result over HTTP.
+
+### Threading
+
+The single rule the design is built around: **the script thread is the only
+thread that touches the GTA API.** Once per tick it reads the world, renders the
+result to a UTF-8 byte array, and publishes that array with a volatile write.
+HTTP threads only ever take a volatile read of that reference and write the bytes
+to a socket — they never see a game object, so there is nothing to race on and no
+lock to contend.
+
+Serialising on the script thread rather than handing over a struct is deliberate:
+it means no game-derived value *can* be read off-thread, whatever later changes
+do. This matters more on Enhanced than on Legacy, because SHVDNE runs scripts on
+a dedicated thread and notes that scripts assuming otherwise may break.
+
+Nothing propagates out of `OnTick` — an exception escaping it can take the game
+down, so the body is wrapped and errors are logged (and rate-limited after ten).
+
+### Build
+
+Needs `ScriptHookVDotNet3.dll` to compile against, so install
+ScriptHookVDotNetEnhanced first.
+
+```
+powershell -ExecutionPolicy Bypass -File plugin\build.ps1 -Deploy
+```
+
+This uses the C# compiler that ships with .NET Framework 4.8 — **no .NET SDK,
+Visual Studio or MSBuild required**. The tradeoff is C# 5 syntax only. Sources
+are pinned to `LangVersion 5` so the optional `LiveMap.csproj` agrees.
+
+`-Deploy` copies `LiveMap.dll` into `<game>\scripts\`, writes a default
+`LiveMap.ini` if there isn't one, and copies `web/` to `<game>\scripts\LiveMapWeb\`.
+Without it, the DLL is left in `plugin\bin\` for you to place yourself.
+
+### Configure
+
+`LiveMap.ini` sits next to the DLL — see
+[LiveMap.ini.example](plugin/LiveMap.ini.example) for every setting. Port
+defaults to 8088.
+
+Binding `http://+:8088/` so phones can reach it needs a one-off reservation.
+Without it the plugin **falls back to localhost and says so in the log**, along
+with the exact commands. Run these once in an admin prompt:
+
+```
+netsh http add urlacl url=http://+:8088/ user=%USERDOMAIN%\%USERNAME%
+netsh advfirewall firewall add rule name="GTA V Live Map" dir=in action=allow protocol=TCP localport=8088
+```
+
+### Check it is alive
+
+Load story mode, then before opening the map:
+
+```
+curl http://localhost:8088/health
+curl http://localhost:8088/pos
+```
+
+`/health` returns `{"ok":true}`. `/pos` returns the snapshot — call it twice and
+confirm `t` advances and `x`/`y` change as you move. Then open
+<http://localhost:8088/> for the map, or `http://<this-pc-ip>:8088/` from a phone.
+
+`LiveMap.log` sits next to the DLL and records startup, the bound address, config
+values and any errors. It is the first place to look if `/pos` does not answer.
+
+> **Gotcha:** the map image and calibration are stored per browser *origin*. Testing
+> on `localhost:8099` via `tools/serve.ps1` and then switching to the plugin on
+> `:8088` means picking the image and calibrating again. Same for viewing from a
+> phone by IP.
 
 ## Licence / third-party
 

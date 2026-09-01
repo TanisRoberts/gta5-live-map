@@ -1,0 +1,26 @@
+; GTA V Live Map — plugin settings.
+;
+; Copy this next to LiveMap.dll (the game's scripts\ folder) and rename it to
+; LiveMap.ini. Every setting is optional; anything missing or invalid falls
+; back to the default noted below and is reported in LiveMap.log.
+
+[livemap]
+
+; TCP port for the feed. Default 8088.
+port = 8088
+
+; Bind to all interfaces so phones and other machines on your LAN can reach it.
+; This needs either an admin urlacl reservation (the exact command is written to
+; LiveMap.log if binding fails) or running the game as administrator. Set this
+; to false to bind localhost only — correct if you only ever view the map on
+; this same PC. Default true.
+bind_all_interfaces = true
+
+; Position sampling rate in Hz, 1-60. The web client interpolates between
+; samples, so there is little point going above 20. Default 20.
+tick_hz = 20
+
+; Folder holding the web client, served at http://<host>:<port>/. Relative
+; paths resolve against the folder containing LiveMap.dll. Copy the repo's
+; web/ folder here. Default LiveMapWeb.
+web_root = LiveMapWeb

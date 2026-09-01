@@ -1,0 +1,33 @@
+# --- Build output ---
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+.vs/
+
+# --- Local config (never committed; see LiveMap.ini.example) ---
+LiveMap.ini
+plugin/LiveMap.ini
+
+# --- Runtime logs ---
+*.log
+
+# --- Map image assets ---
+# Supply your own map image. Never commit Rockstar artwork to this repo.
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.bmp
+*.gif
+*.dds
+*.ytd
+
+# ...except the vendored Leaflet UI sprites, which are MIT-licensed.
+!web/vendor/images/**
+
+# --- OS cruft ---
+Thumbs.db
+desktop.ini
+.DS_Store

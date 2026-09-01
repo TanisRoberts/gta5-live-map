@@ -40,7 +40,7 @@ namespace GtaLiveMap
 
             try
             {
-                directory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                directory = ResolveBaseDirectory();
                 Log.Init(directory);
                 Log.Info("==== GTA V Live Map starting ====");
 
@@ -62,6 +62,69 @@ namespace GtaLiveMap
                 Log.Error("Startup failed; the plugin is disabled for this session.", ex);
                 Shutdown();
             }
+        }
+
+        /// <summary>
+        /// Works out the folder holding this DLL, which is where the ini, the
+        /// log and the web root live.
+        ///
+        /// <see cref="Assembly.Location"/> alone is not enough: SHVDN can load a
+        /// script from a byte array, which leaves Location empty and silently
+        /// gives us no config, no log and no static files. Fall through a chain
+        /// of increasingly blunt options and take the first that resolves to a
+        /// real directory.
+        /// </summary>
+        private static string ResolveBaseDirectory()
+        {
+            // SHVDN shadow-copies plugin assemblies into the .NET download cache
+            // (%LOCALAPPDATA%\assembly\dl3\...), so Assembly.Location returns a
+            // real directory that is emphatically NOT where we were deployed —
+            // no ini, no web root, and a log nobody will ever find.
+            //
+            // The game process's base directory is the game root, and SHVDN
+            // always loads plugins from <game root>\scripts. Trust that first,
+            // and only fall back to asking the assembly where it thinks it is.
+            try
+            {
+                string scripts = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts");
+                if (Directory.Exists(scripts))
+                {
+                    return scripts;
+                }
+            }
+            catch { }
+
+            Assembly self = Assembly.GetExecutingAssembly();
+
+            try
+            {
+                string location = self.Location;
+                if (!string.IsNullOrEmpty(location))
+                {
+                    string dir = Path.GetDirectoryName(location);
+                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                    {
+                        return dir;
+                    }
+                }
+            }
+            catch { }
+
+            try
+            {
+                string codeBase = self.CodeBase;
+                if (!string.IsNullOrEmpty(codeBase))
+                {
+                    string dir = Path.GetDirectoryName(new Uri(codeBase).LocalPath);
+                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                    {
+                        return dir;
+                    }
+                }
+            }
+            catch { }
+
+            return AppDomain.CurrentDomain.BaseDirectory;
         }
 
         private void OnTick(object sender, EventArgs e)

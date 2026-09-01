@@ -14,7 +14,7 @@ namespace GtaLiveMap
     /// </summary>
     internal sealed class HttpServer : IDisposable
     {
-        private static readonly byte[] HealthBody = Encoding.UTF8.GetBytes("{\"ok\":true}");
+        private byte[] _healthBody = Encoding.UTF8.GetBytes("{\"ok\":true}");
 
         private static readonly Dictionary<string, string> MimeTypes =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -36,6 +36,8 @@ namespace GtaLiveMap
         private readonly int _port;
         private readonly bool _bindAll;
         private readonly string _webRoot;
+        private readonly string _baseDirectory;
+        private readonly string _webRootAttempted;
 
         private HttpListener _listener;
         private Thread _thread;
@@ -52,6 +54,8 @@ namespace GtaLiveMap
                 root = Path.Combine(baseDirectory, root);
             }
 
+            _baseDirectory = baseDirectory;
+            _webRootAttempted = root;
             _webRoot = Directory.Exists(root) ? Path.GetFullPath(root) : null;
 
             if (_webRoot == null)
@@ -74,6 +78,20 @@ namespace GtaLiveMap
                 Log.Error("Could not bind to any address; the feed will not be available.", null);
                 return;
             }
+
+            // Build the health payload now that the bound address is known. It
+            // carries the resolved paths deliberately: if the plugin ever fails
+            // to find its own folder again, /health says so even though that
+            // same failure is what stops the log file appearing.
+            StringBuilder health = new StringBuilder(256);
+            health.Append("{\"ok\":true,\"boundPrefix\":").Append(Json.String(BoundPrefix));
+            health.Append(",\"baseDirectory\":").Append(Json.String(_baseDirectory));
+            health.Append(",\"appDomainBase\":").Append(Json.String(AppDomain.CurrentDomain.BaseDirectory));
+            health.Append(",\"webRoot\":").Append(Json.String(_webRoot));
+            health.Append(",\"webRootAttempted\":").Append(Json.String(_webRootAttempted));
+            health.Append(",\"servingStaticFiles\":").Append(Json.Bool(_webRoot != null));
+            health.Append('}');
+            _healthBody = Encoding.UTF8.GetBytes(health.ToString());
 
             _running = true;
             _thread = new Thread(Loop);
@@ -210,7 +228,7 @@ namespace GtaLiveMap
 
             if (path == "/health")
             {
-                Send(response, 200, "application/json; charset=utf-8", HealthBody);
+                Send(response, 200, "application/json; charset=utf-8", _healthBody);
                 return;
             }
 

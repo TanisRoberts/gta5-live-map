@@ -192,6 +192,25 @@ let clockOffset = null;
 let lastSampleT = -Infinity;
 let lastGoodAt  = -Infinity;
 
+/*
+ * Observed gap between samples, as an EMA. This is NOT always the poll interval:
+ * browsers clamp timers to roughly 1 Hz in a hidden tab, which happens whenever
+ * the game is fullscreen over the top of the browser. Rather than declare the
+ * feed dead or stutter the marker, the render delay and the staleness threshold
+ * both scale off whatever rate we are actually managing.
+ */
+let sampleGapMs = POLL_MS;
+
+/** How far behind live to draw, so we interpolate rather than extrapolate. */
+function renderDelayMs() {
+  return Math.max(RENDER_DELAY_MS, sampleGapMs * 1.6);
+}
+
+/** Silence for longer than this means the feed really has stopped. */
+function staleMs() {
+  return Math.max(STALE_MS, sampleGapMs * 3);
+}
+
 function pushSample(s) {
   if (!s || !Number.isFinite(s.x) || !Number.isFinite(s.t)) return;
 
@@ -212,6 +231,15 @@ function pushSample(s) {
   else clockOffset += (off - clockOffset) * 0.002;
 
   s.lt = s.t + clockOffset;
+
+  const prev = buf[buf.length - 1];
+  if (prev) {
+    const gap = s.lt - prev.lt;
+    // Ignore absurd gaps (tab suspended, game paused) so one outlier does not
+    // drag the estimate up for minutes afterwards.
+    if (gap > 0 && gap < 5000) sampleGapMs += (gap - sampleGapMs) * 0.2;
+  }
+
   buf.push(s);
   lastGoodAt = now;
 
@@ -224,6 +252,7 @@ function resetBuffer() {
   clockOffset = null;
   lastSampleT = -Infinity;
   lastGoodAt  = -Infinity;
+  sampleGapMs = POLL_MS;
 }
 
 /** Interpolated state at a point on our local clock, or null. */
@@ -372,7 +401,7 @@ function stopFeed() {
 
 function updateFeedStatus() {
   const dot = $('#feedDot'), txt = $('#feedStatus');
-  const fresh = performance.now() - lastGoodAt < STALE_MS;
+  const fresh = performance.now() - lastGoodAt < staleMs();
   dot.className = 'dot';
   if (settings.mock) {
     dot.classList.add('mock');
@@ -518,7 +547,7 @@ let current = null;   // most recent interpolated state, for the HUD
 
 function frame() {
   requestAnimationFrame(frame);
-  const s = sampleAt(performance.now() - RENDER_DELAY_MS);
+  const s = sampleAt(performance.now() - renderDelayMs());
   if (!s) return;
   current = s;
 

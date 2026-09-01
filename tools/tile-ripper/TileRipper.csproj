@@ -1,0 +1,39 @@
+<!--
+  Build with build.ps1, which fetches and builds CodeWalker.Core first and
+  passes its path in. See the README in this folder for why CodeWalker is not
+  vendored here.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>TileRipper</AssemblyName>
+    <RootNamespace>GtaLiveMap.TileRipper</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src\**\*.cs" />
+  </ItemGroup>
+
+  <!-- Same versions CodeWalker.Core itself resolves, so we load one copy. -->
+  <ItemGroup>
+    <PackageReference Include="SharpDX" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Mathematics" Version="4.2.0" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="CodeWalker.Core">
+      <HintPath>$(CodeWalkerCorePath)</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="CheckCodeWalker" BeforeTargets="Build" Condition="!Exists('$(CodeWalkerCorePath)')">
+    <Error Text="CodeWalker.Core.dll not found at '$(CodeWalkerCorePath)'. Run tools\tile-ripper\build.ps1, which builds it for you." />
+  </Target>
+
+</Project>

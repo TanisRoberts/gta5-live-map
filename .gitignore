@@ -34,3 +34,8 @@ desktop.ini
 
 # Local editor/dev config
 .claude/
+
+# Tile ripper build output
+tools/tile-ripper/bin/
+tools/tile-ripper/obj/
+map-out/

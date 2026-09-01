@@ -73,8 +73,36 @@ tools\tile-ripper\bin\Release\net48\TileRipper.exe --game "<GTA V folder>" --out
 | `--out` | Output folder. Default `map-out`. |
 | `--keep-tiles` | Also write the individual tiles, not just the composite. |
 
-Output is `gtav-map.png`, 2048 x 3072. Load it in the client with
-**Choose map image**, then calibrate.
+Output is `gtav-map.png`, 2048 x 3072.
+
+If the client is found at `<game>\scripts\LiveMapWeb` the map is **installed
+into it automatically**, along with a `map.json` manifest — open the client and
+it is simply there, already calibrated. Pass `--deploy <path>` to install it
+somewhere else, or load the PNG by hand with **Choose map image**.
+
+## Calibration comes free
+
+The tool reads `x64a.rpf\data\tune\minimap.ymt`, which states exactly where the
+map bitmap sits in the world:
+
+```xml
+<iBitmapTilesX value="2" />  <iBitmapTilesY value="3" />
+<vBitmapTileSize x="4500" y="4500" />
+<vBitmapStart    x="-4140" y="8400" />
+```
+
+So the map covers world X `-4140..4860` and Y `-5100..8400`, and the transform
+is computed rather than fitted. That matters because the manual alternative —
+standing at two landmarks far apart — is impractical on a new save, where most
+of the map is a long drive away.
+
+Two things fall out of it that are worth knowing:
+
+- The tile grid the game reports is checked against the grid actually
+  composited. A mismatch means the file layout changed, so calibration is
+  skipped rather than silently wrong.
+- The X and Y scales come out identical, as they must for a real map
+  projection. That is a free correctness check on the whole pipeline.
 
 ## How it works
 

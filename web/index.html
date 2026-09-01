@@ -17,19 +17,27 @@
 <!-- ------------------------------------------------------------------ -->
 <div id="setup" class="overlay" hidden>
   <div class="card">
-    <h1>GTA&nbsp;V Live Map</h1>
+    <h1>Setup hasn&rsquo;t been run yet</h1>
     <p>
-      Choose a map image to use as the base layer. It stays in this browser
-      (IndexedDB) and is remembered after a reload &mdash; nothing is uploaded
-      anywhere.
+      There&rsquo;s no map image installed. The setup tool reads the map straight
+      out of your own GTA&nbsp;V installation and installs it here &mdash; run it
+      once and this screen goes away.
     </p>
+    <p class="muted">From the repository folder:</p>
+    <pre class="cmd">powershell -ExecutionPolicy Bypass -File tools\tile-ripper\build.ps1 ^
+    -Game "&lt;your GTA V folder&gt;"</pre>
     <p class="muted">
-      Supply your own image. This project ships no game artwork.
+      Nothing is uploaded anywhere, and no game artwork ships with this project
+      &mdash; the map is built from the files you already own.
     </p>
-    <label class="filebtn">
-      <input type="file" id="setupFile" accept="image/*">
-      <span>Choose map image&hellip;</span>
-    </label>
+    <div class="row setup-actions">
+      <button class="btn primary" id="setupRetry">I&rsquo;ve run it &mdash; check again</button>
+      <label class="filebtn small">
+        <input type="file" id="setupFile" accept="image/*">
+        <span>Or choose an image&hellip;</span>
+      </label>
+    </div>
+    <p class="hint" id="setupStatus"></p>
   </div>
 </div>
 

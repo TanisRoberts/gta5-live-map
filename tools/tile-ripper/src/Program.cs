@@ -2,8 +2,11 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Xml.Linq;
 using CodeWalker.GameFiles;
 using CodeWalker.Utils;
 
@@ -85,16 +88,40 @@ namespace GtaLiveMap.TileRipper
                 Bitmap[] land = LoadGrid(root, "minimap_{0}_{1}.ytd", outDir, keepTiles);
 
                 string composite = Path.Combine(outDir, "gtav-map.png");
-                Compose(land, sea, composite);
+                Size size = Compose(land, sea, composite);
 
                 Dispose(land);
                 Dispose(sea);
 
                 Console.WriteLine();
-                Console.WriteLine("Done. Map written to:");
+                Console.WriteLine("Map written to:");
                 Console.WriteLine("  " + Path.GetFullPath(composite));
-                Console.WriteLine();
-                Console.WriteLine("Load it in the live map client with 'Choose map image'.");
+
+                // Hand the map to the client rather than making the user pick it
+                // from a file dialog. The client loads it over HTTP, so it works
+                // on any device and survives the browser storage being cleared.
+                string deploy = Arg(args, "--deploy", null);
+                if (string.IsNullOrEmpty(deploy))
+                {
+                    string guess = Path.Combine(game, "scripts", "LiveMapWeb");
+                    if (Directory.Exists(guess))
+                    {
+                        deploy = guess;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(deploy))
+                {
+                    Deploy(deploy, composite, size, gen9, ReadProjection());
+                }
+                else
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("The live map client was not found, so the map was not installed.");
+                    Console.WriteLine("Pass --deploy <path to LiveMapWeb>, or load the PNG by hand with");
+                    Console.WriteLine("'Choose map image' in the client.");
+                }
+
                 return 0;
             }
             catch (Exception ex)
@@ -102,6 +129,85 @@ namespace GtaLiveMap.TileRipper
                 Console.Error.WriteLine("Failed: " + ex.Message);
                 return 1;
             }
+        }
+
+        /// <summary>
+        /// The world rectangle the map bitmap covers, read from the game's own
+        /// minimap tuning rather than guessed or calibrated by hand.
+        /// </summary>
+        private sealed class Projection
+        {
+            public int TilesX, TilesY;
+            public double TileW, TileH;
+            public double StartX, StartY;
+
+            public double WorldW { get { return TilesX * TileW; } }
+            public double WorldH { get { return TilesY * TileH; } }
+        }
+
+        /// <summary>
+        /// Reads minimap.ymt for the bitmap's world placement. This is what makes
+        /// calibration unnecessary: the game states exactly which world rectangle
+        /// the tiles cover, so the image-to-world transform is exact rather than
+        /// fitted from two landmarks the player has to drive between.
+        /// </summary>
+        private static Projection ReadProjection()
+        {
+            try
+            {
+                const string path = @"x64a.rpf\data\tune\minimap.ymt";
+                var entry = _mgr.GetEntry(path) as RpfFileEntry;
+                if (entry == null) return null;
+
+                var ymt = new YmtFile();
+                ymt.Load(_mgr.GetFileData(path), entry);
+
+                string unused;
+                string xml = MetaXml.GetXml(ymt, out unused);
+                if (string.IsNullOrWhiteSpace(xml)) return null;
+
+                var bitmap = XDocument.Parse(xml).Descendants("Bitmap").FirstOrDefault();
+                if (bitmap == null) return null;
+
+                var p = new Projection
+                {
+                    TilesX = (int)Attr(bitmap, "iBitmapTilesX", "value"),
+                    TilesY = (int)Attr(bitmap, "iBitmapTilesY", "value"),
+                    TileW = Attr(bitmap, "vBitmapTileSize", "x"),
+                    TileH = Attr(bitmap, "vBitmapTileSize", "y"),
+                    StartX = Attr(bitmap, "vBitmapStart", "x"),
+                    StartY = Attr(bitmap, "vBitmapStart", "y")
+                };
+
+                if (p.TilesX <= 0 || p.TilesY <= 0 || p.TileW <= 0 || p.TileH <= 0) return null;
+
+                // The grid we composite must match the grid the game describes,
+                // or the transform would describe a different image than the one
+                // we just built.
+                if (p.TilesX != GridCols || p.TilesY != GridRows)
+                {
+                    Console.WriteLine("  note: game reports a " + p.TilesX + "x" + p.TilesY +
+                                      " grid but tiles were composited as " + GridCols + "x" + GridRows +
+                                      "; skipping automatic calibration.");
+                    return null;
+                }
+
+                return p;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("  note: could not read the map projection (" + ex.Message + ").");
+                return null;
+            }
+        }
+
+        private static double Attr(XElement parent, string element, string attribute)
+        {
+            var el = parent.Element(element);
+            if (el == null) throw new InvalidOperationException("missing <" + element + ">");
+            var at = el.Attribute(attribute);
+            if (at == null) throw new InvalidOperationException("missing " + element + "/@" + attribute);
+            return double.Parse(at.Value, CultureInfo.InvariantCulture);
         }
 
         private static string FindRoot()
@@ -193,7 +299,7 @@ namespace GtaLiveMap.TileRipper
         /// tiles, so they set the output size and are drawn first. The land
         /// layer goes over the top, scaled to match.
         /// </summary>
-        private static void Compose(Bitmap[] land, Bitmap[] sea, string outPath)
+        private static Size Compose(Bitmap[] land, Bitmap[] sea, string outPath)
         {
             int cell = 0;
             cell = Math.Max(cell, LargestCell(sea));
@@ -222,6 +328,90 @@ namespace GtaLiveMap.TileRipper
 
                 canvas.Save(outPath, ImageFormat.Png);
             }
+
+            return new Size(width, height);
+        }
+
+        /// <summary>
+        /// Installs the map into the client's web root, alongside a manifest the
+        /// client looks for on startup. Doing it over HTTP rather than through
+        /// the file picker means the map is there on every device that opens the
+        /// page, and survives the browser's storage being cleared.
+        /// </summary>
+        private static void Deploy(string webRoot, string composite, Size size, bool gen9, Projection proj)
+        {
+            string mapDir = Path.Combine(webRoot, "map");
+            Directory.CreateDirectory(mapDir);
+
+            string image = Path.Combine(mapDir, "gtav-map.png");
+            File.Copy(composite, image, true);
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append("{\n");
+            sb.Append("  \"image\": \"gtav-map.png\",\n");
+            sb.Append("  \"width\": ").Append(size.Width).Append(",\n");
+            sb.Append("  \"height\": ").Append(size.Height).Append(",\n");
+            sb.Append("  \"source\": \"GTA V ").Append(gen9 ? "Enhanced" : "Legacy").Append(" minimap tiles\",\n");
+            sb.Append("  \"generated\": \"").Append(DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")).Append("\"");
+
+            if (proj != null)
+            {
+                // Client convention: lng = a*worldX + b, lat = c*worldY + d,
+                // where lat counts UP from the image's bottom edge. The bitmap
+                // start is its north-west corner, so world Y decreases as the
+                // image row increases — which is where the flip is absorbed.
+                double a = size.Width / proj.WorldW;
+                double c = size.Height / proj.WorldH;
+                double b = -proj.StartX * a;
+                double d = size.Height - proj.StartY * c;
+
+                sb.Append(",\n  \"transform\": { ");
+                sb.Append("\"a\": ").Append(N(a)).Append(", ");
+                sb.Append("\"b\": ").Append(N(b)).Append(", ");
+                sb.Append("\"c\": ").Append(N(c)).Append(", ");
+                sb.Append("\"d\": ").Append(N(d)).Append(" },\n");
+                sb.Append("  \"world\": { ");
+                sb.Append("\"minX\": ").Append(N(proj.StartX)).Append(", ");
+                sb.Append("\"maxX\": ").Append(N(proj.StartX + proj.WorldW)).Append(", ");
+                sb.Append("\"minY\": ").Append(N(proj.StartY - proj.WorldH)).Append(", ");
+                sb.Append("\"maxY\": ").Append(N(proj.StartY)).Append(" }\n");
+            }
+            else
+            {
+                sb.Append("\n");
+            }
+
+            sb.Append("}\n");
+            File.WriteAllText(Path.Combine(mapDir, "map.json"), sb.ToString());
+
+            Console.WriteLine();
+            Console.WriteLine("Installed into the live map client:");
+            Console.WriteLine("  " + mapDir);
+
+            if (proj != null)
+            {
+                Console.WriteLine();
+                Console.WriteLine("Calibration derived from the game's own minimap tuning:");
+                Console.WriteLine(string.Format("  world {0:0} x {1:0} units, X {2:0}..{3:0}, Y {4:0}..{5:0}",
+                    proj.WorldW, proj.WorldH, proj.StartX, proj.StartX + proj.WorldW,
+                    proj.StartY - proj.WorldH, proj.StartY));
+                Console.WriteLine("  No manual calibration needed.");
+            }
+            else
+            {
+                Console.WriteLine();
+                Console.WriteLine("Could not derive calibration automatically — you will need to");
+                Console.WriteLine("calibrate by hand in the client.");
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("Setup complete. Start GTA V story mode, then open:");
+            Console.WriteLine("  http://localhost:8088/");
+        }
+
+        private static string N(double v)
+        {
+            return v.ToString("0.#########", CultureInfo.InvariantCulture);
         }
 
         private static int LargestCell(Bitmap[] grid)

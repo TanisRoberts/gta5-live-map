@@ -39,3 +39,6 @@ desktop.ini
 tools/tile-ripper/bin/
 tools/tile-ripper/obj/
 map-out/
+
+# Map installed by the setup tool (generated, user-specific)
+web/map/

@@ -75,6 +75,22 @@ html, body {
 .card p { margin: 0 0 12px; color: var(--muted); }
 .card p.muted { font-size: 12px; }
 
+.card .cmd {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: 11px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: all;
+}
+
+.setup-actions { flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+#setupStatus:empty { display: none; }
+
 /* ------------------------------------------------------------------ */
 /* Control panel                                                       */
 /* ------------------------------------------------------------------ */

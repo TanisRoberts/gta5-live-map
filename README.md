@@ -126,16 +126,44 @@ IndexedDB on `file://` origins, so your map image would not be remembered.
 
 ### First run
 
-1. **Choose a map image.** Any image of the map works. It is stored in your
-   browser and never uploaded. Nothing is bundled with this repo.
-2. **Turn on _Mock feed_** in the panel. A synthetic player drives a loop, so you
-   can set everything up and check it works before the plugin is involved.
-3. **Calibrate** (below).
+Run the setup tool once — see [tools/tile-ripper](tools/tile-ripper/README.md).
+It reads the map out of your own GTA V installation, installs it into the
+client, and works out the calibration from the game's own data.
+
+```
+powershell -ExecutionPolicy Bypass -File tools\tile-ripper\build.ps1 `
+    -Game "<your GTA V folder>"
+```
+
+Then open the client. There is nothing else to configure: the map appears and
+the marker is already in the right place.
+
+Open the client before running setup and you get a **"Setup hasn't been run
+yet"** screen with that command and an *I've run it — check again* button.
+
+To try the UI without the game at all, turn on **Mock feed** in the panel — a
+synthetic player drives a loop.
 
 ### Calibration
 
-The client has no idea how your image relates to game coordinates until you tell
-it, using two landmarks:
+**Normally you do not calibrate anything.** The setup tool reads
+`minimap.ymt` from the game, which states exactly which world rectangle the map
+bitmap covers:
+
+```
+2 x 3 tiles of 4500 x 4500 units, starting at world (-4140, 8400)
+=> world X -4140..4860, Y -5100..8400
+```
+
+That yields an exact transform, written into `map/map.json` and applied
+automatically. A useful sanity check falls out of it: the X and Y scales come
+out identical, as they must for a real map projection.
+
+The manual two-landmark method below is the fallback for a map image the setup
+tool did not produce — your own screenshot, or a community map. **Reset** returns
+to the game-derived calibration when there is one.
+
+To calibrate by hand you use two landmarks:
 
 1. Stand somewhere recognisable in game. Click **Capture position** under
    Point&nbsp;A — that records your world coordinates.

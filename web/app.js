@@ -687,17 +687,21 @@ function calApply() {
 }
 
 function calReset() {
-  settings.transform = null;
+  // Fall back to the calibration the setup tool derived from the game, not to
+  // nothing — starting over by hand is almost never what you want.
+  settings.transform = installedTransform;
   save();
   calPoints.forEach(p => { p.game = null; p.img = null; });
   pickingIndex = -1;
   document.body.classList.remove('picking');
-  if (marker) { marker.remove(); marker = null; markerSvg = null; }
+  if (!settings.transform && marker) { marker.remove(); marker = null; markerSvg = null; }
   trailPts = [];
   redrawTrail();
   renderCal();
-  if (imageBounds) map.fitBounds(imageBounds);
-  toast('Calibration cleared.');
+  if (imageBounds && !settings.transform) map.fitBounds(imageBounds);
+  toast(installedTransform
+    ? 'Reset to the calibration derived from your game files.'
+    : 'Calibration cleared.');
 }
 
 // --------------------------------------------------------------------------
@@ -777,6 +781,23 @@ function wireUi() {
   $('#setupFile').addEventListener('change', e => pickImage(e.target.files[0]));
   $('#mapFile').addEventListener('change', e => pickImage(e.target.files[0]));
 
+  // "I've run setup" — re-check without needing a page reload.
+  $('#setupRetry').addEventListener('click', async () => {
+    const status = $('#setupStatus');
+    status.textContent = 'Checking…';
+    if (await tryInstalledMap()) {
+      $('#setup').hidden = true;
+      renderCal();
+      toast(settings.transform
+        ? 'Map installed and calibrated automatically.'
+        : 'Map installed.');
+    } else {
+      status.textContent =
+        'Still no map found. Check the setup tool finished without errors, and ' +
+        'that GTA V is running so the plugin can serve it.';
+    }
+  });
+
   // Escape cancels an armed pick
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && pickingIndex >= 0) {
@@ -790,28 +811,74 @@ function wireUi() {
 // --------------------------------------------------------------------------
 // Boot
 // --------------------------------------------------------------------------
-async function init() {
-  initMap();
-  wireUi();
-  renderCal();
+/**
+ * Map installed by the setup tool, if there is one. Kept so Reset returns to
+ * the game-derived calibration rather than to nothing.
+ */
+let installedTransform = null;
 
-  let saved = null;
+/**
+ * Tries the map the setup tool installed into the plugin's web root. Served
+ * over the local HTTP feed, so unlike a hand-picked image it is present on
+ * every device that opens the page and survives browser storage being cleared.
+ */
+async function tryInstalledMap() {
+  const base = (settings.server || '').trim().replace(/\/+$/, '');
   try {
-    saved = await idbGet(DB_KEY);
+    const r = await fetch(base + '/map/map.json', { cache: 'no-store' });
+    if (!r.ok) return false;
+
+    const manifest = await r.json();
+    const name = manifest.image || 'gtav-map.png';
+
+    const img = await fetch(base + '/map/' + name);
+    if (!img.ok) return false;
+
+    await setMapImage(await img.blob(), name);
+
+    // The setup tool reads the world rectangle the map covers straight out of
+    // the game's minimap tuning, so an installed map arrives already calibrated
+    // and never needs the two-landmark dance.
+    if (isValidTransform(manifest.transform)) {
+      installedTransform = manifest.transform;
+      if (!settings.transform) {
+        settings.transform = manifest.transform;
+        save();
+      }
+    }
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function loadMap() {
+  if (await tryInstalledMap()) {
+    $('#setup').hidden = true;
+    return;
+  }
+
+  try {
+    const saved = await idbGet(DB_KEY);
+    if (saved && saved.blob) {
+      await setMapImage(saved.blob, saved.name);
+      $('#setup').hidden = true;
+      return;
+    }
   } catch (e) {
     console.warn('IndexedDB unavailable:', e);
   }
 
-  if (saved && saved.blob) {
-    try {
-      await setMapImage(saved.blob, saved.name);
-    } catch (e) {
-      console.warn('Stored map image failed to load:', e);
-      $('#setup').hidden = false;
-    }
-  } else {
-    $('#setup').hidden = false;
-  }
+  $('#setup').hidden = false;
+}
+
+async function init() {
+  initMap();
+  wireUi();
+
+  await loadMap();
+  renderCal();
 
   startFeed();
   setInterval(updateHud, POLL_MS);

@@ -33,6 +33,49 @@ of that, the plugin checks for an online session on startup and on every tick,
 and aborts itself if one is detected. There is no networking code that talks to
 anything but your own LAN.
 
+## Requirements (GTA V **Enhanced**)
+
+This targets **GTA&nbsp;V Enhanced**. Enhanced is a different executable from
+Legacy and needs the Enhanced-aware toolchain — the classic Legacy ScriptHookV /
+SHVDN3 downloads will not load into it.
+
+| Component | Version | Source |
+|---|---|---|
+| GTA V Enhanced | `1.0.1158.13` | Steam (appid `3240220`) |
+| Script Hook V | `v3889.0 / 1158.13` | [dev-c.com](https://dev-c.com/gtav/scripthookv) |
+| ScriptHookVDotNet **Enhanced** | `v1.1.0.6` | [github.com/Chiheb-Bacha/ScriptHookVDotNetEnhanced](https://github.com/Chiheb-Bacha/ScriptHookVDotNetEnhanced) |
+| .NET Framework | ≥ 4.8 | — |
+
+Check your game build first (right-click `GTA5_Enhanced.exe` → Properties →
+Details). Script Hook V is tied to an exact game patch: after a Rockstar title
+update it stops working until a matching release appears, so the version above
+must line up with your build.
+
+### Install
+
+Everything except the plugin goes in the **game root** — the folder containing
+`GTA5_Enhanced.exe` (a default Steam install is under
+`steamapps\common\Grand Theft Auto V Enhanced`).
+
+1. From Script Hook V: `ScriptHookV.dll` and `dinput8.dll` → game root.
+2. From ScriptHookVDotNetEnhanced: `ScriptHookVDotNet.asi`,
+   `ScriptHookVDotNet2.dll`, `ScriptHookVDotNet3.dll` and the `.ini` → game root.
+   Update the `.asi` and the `.dll`s **together**; mismatched versions fail.
+3. Create a `scripts\` folder in the game root if there isn't one. The built
+   plugin DLL goes there — see the plugin section.
+
+### Story mode only, and the risks
+
+Script Hook V does not run in GTA Online — it closes the game if you enter
+multiplayer — and this plugin aborts itself if it detects an online session on
+top of that.
+
+Be aware that Enhanced ships **BattlEye** (`BattlEye\`, `GTA5_Enhanced_BE.exe`).
+Loading an ASI into a BattlEye-protected build is a decision to make consciously:
+story-mode-only intent does not remove the anti-cheat from the process, and modding
+carries a risk to your Rockstar/Steam account. Legacy has no such complication if
+you would rather avoid the question.
+
 ## Bring your own map image
 
 This repo contains **no Rockstar artwork**, and `.gitignore` is set up to keep it

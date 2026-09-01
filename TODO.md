@@ -54,7 +54,7 @@ endpoint or a lower update rate, not the 20 Hz position payload.
 client-side only. Independent of the plugin, so it can be done any time.
 
 **3c. Navigation route** *(stretch)*. Draw a route to a marker rather than a
-straight line. Needs road geometry the client does not have — see item 5. This is
+straight line. Needs road geometry the client does not have — see item 6. This is
 much the largest item here and should be split out once 3a and 3b land.
 
 ## 4. Colour-code the trail by vehicle type
@@ -75,7 +75,29 @@ is added.
 
 Needs a legend, or the colours mean nothing.
 
-## 5. Current street name in the HUD
+## 5. Switchable base layers (atlas / satellite / road / stylised)
+
+Hold more than one map image and switch between them, the way the online map
+sites offer atlas, satellite, road and UV views.
+
+Client-side this is a Leaflet layer control plus one IndexedDB entry per layer
+rather than the single `mapImage` key used today.
+
+**The part to settle first:** one calibration only covers every layer if the
+images share dimensions and cover the same area. Mixing a pause-map screenshot at
+monitor resolution with an extracted 4096×4096 texture will not line up. Given
+layers will realistically come from different sources, plan for **per-layer
+calibration** — store the transform against the layer, not globally — and treat a
+shared transform as the special case rather than the assumption.
+
+Sourcing is the user's problem, not the code's, but for the record: the atlas view
+is a pause-map screenshot away; satellite means extracting the terrain texture from
+your own `x64*.rpf` (there is no in-game view of it); stylised maps are usually
+community work with their own licence terms. **Do not scrape third-party tile
+servers**, and never commit any of it — `.gitignore` blocks raster formats
+repo-wide for exactly this reason.
+
+## 6. Current street name in the HUD
 
 Show the street you are on, like a phone satnav.
 

@@ -114,5 +114,12 @@ hammering it ten times a second.
 
 ## Licence / third-party
 
-Leaflet 1.9.4 is vendored under `web/vendor/` (BSD-2-Clause, © Volodymyr Agafonkin
-and Leaflet contributors) so the client works with no build step and no CDN.
+This project is MIT licensed — see [LICENSE](LICENSE).
+
+Leaflet 1.9.4 is vendored under `web/vendor/` so the client works with no build
+step and no CDN. It is BSD-2-Clause; its licence text is retained alongside it at
+[web/vendor/LICENSE-leaflet.txt](web/vendor/LICENSE-leaflet.txt).
+
+No Rockstar assets are included, and none should ever be committed here — the
+`.gitignore` blanket-ignores raster image formats to keep it that way. Your map
+image stays in your browser.

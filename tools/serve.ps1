@@ -69,8 +69,11 @@ try {
             $resolved = $null
             if (Test-Path $full) { $resolved = (Resolve-Path $full).ProviderPath }
 
-            # Refuse anything that escapes the web root.
-            if ($resolved -and -not $resolved.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase)) {
+            # Refuse anything that escapes the web root. Compare against the
+            # root plus a separator, or a sibling like 'web2\' would pass the
+            # prefix test.
+            $rootPrefix = $Root.TrimEnd('\') + '\'
+            if ($resolved -and -not $resolved.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
                 $resolved = $null
             }
 

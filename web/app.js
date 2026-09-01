@@ -31,6 +31,7 @@ const MOCK_MS        = 50;    // ~20 Hz, matching the plugin's tick throttle
 const RENDER_DELAY_MS = 250;  // interpolate this far behind live, so we never
                               // extrapolate past the newest sample
 const BUFFER_MS      = 5000;  // how much history to keep for interpolation
+const RESTART_JUMP_MS = 1000; // a timestamp this far backwards = plugin restart
 const STALE_MS       = 1500;  // no sample this long => feed considered dead
 const FETCH_TIMEOUT  = 2000;
 const TRAIL_MIN_MOVE = 3;     // game units between trail points
@@ -82,11 +83,21 @@ const defaults = {
 let settings = load();
 
 function load() {
+  let saved = {};
   try {
-    return Object.assign({}, defaults, JSON.parse(localStorage.getItem(LS_KEY) || '{}'));
+    saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {};
   } catch {
-    return Object.assign({}, defaults);
+    saved = {};
   }
+  const s = Object.assign({}, defaults, saved);
+  // A half-written or hand-edited transform would otherwise produce NaN
+  // coordinates and a map that is silently, inexplicably dead.
+  if (!isValidTransform(s.transform)) s.transform = null;
+  return s;
+}
+
+function isValidTransform(t) {
+  return !!t && ['a', 'b', 'c', 'd'].every(k => Number.isFinite(t[k])) && t.a !== 0 && t.c !== 0;
 }
 
 function save() {
@@ -182,8 +193,17 @@ let lastSampleT = -Infinity;
 let lastGoodAt  = -Infinity;
 
 function pushSample(s) {
-  if (!s || typeof s.x !== 'number' || typeof s.t !== 'number') return;
-  if (s.t <= lastSampleT) return;                   // dedupe / out-of-order
+  if (!s || !Number.isFinite(s.x) || !Number.isFinite(s.t)) return;
+
+  // The producer's clock is monotonic since IT started, not since we did. A
+  // timestamp that jumps backwards means the plugin was reloaded (which happens
+  // constantly while developing it), so drop the old history and resync rather
+  // than rejecting every sample from the new run as stale forever.
+  if (s.t < lastSampleT - RESTART_JUMP_MS) {
+    resetBuffer();
+  } else if (s.t <= lastSampleT) {
+    return;                                         // dedupe / out-of-order
+  }
   lastSampleT = s.t;
 
   const now = performance.now();
@@ -406,20 +426,29 @@ function initMap() {
   if (window.ResizeObserver) new ResizeObserver(onResize).observe($('#map'));
 }
 
+let overlayUrl = null;
+
 async function setMapImage(blob, name) {
   const url = URL.createObjectURL(blob);
   const img = new Image();
-  await new Promise((res, rej) => {
-    img.onload  = res;
-    img.onerror = () => rej(new Error('That file could not be decoded as an image.'));
-    img.src = url;
-  });
+  try {
+    await new Promise((res, rej) => {
+      img.onload  = res;
+      img.onerror = () => rej(new Error('That file could not be decoded as an image.'));
+      img.src = url;
+    });
+  } catch (e) {
+    URL.revokeObjectURL(url);
+    throw e;
+  }
 
   const w = img.naturalWidth, h = img.naturalHeight;
   imageBounds = L.latLngBounds([[0, 0], [h, w]]);
   imageSize   = { w, h };
 
   if (overlay) overlay.remove();
+  if (overlayUrl) URL.revokeObjectURL(overlayUrl);   // don't leak the old image
+  overlayUrl = url;
   overlay = L.imageOverlay(url, imageBounds).addTo(map);
   overlay.bringToBack();
 

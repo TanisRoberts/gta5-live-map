@@ -31,3 +31,6 @@ plugin/LiveMap.ini
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Local editor/dev config
+.claude/

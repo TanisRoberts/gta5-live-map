@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>GTA V Live Map</title>
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="map" aria-label="Live map"></div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- First-run: no map image chosen yet                                  -->
+<!-- ------------------------------------------------------------------ -->
+<div id="setup" class="overlay" hidden>
+  <div class="card">
+    <h1>GTA&nbsp;V Live Map</h1>
+    <p>
+      Choose a map image to use as the base layer. It stays in this browser
+      (IndexedDB) and is remembered after a reload &mdash; nothing is uploaded
+      anywhere.
+    </p>
+    <p class="muted">
+      Supply your own image. This project ships no game artwork.
+    </p>
+    <label class="filebtn">
+      <input type="file" id="setupFile" accept="image/*">
+      <span>Choose map image&hellip;</span>
+    </label>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- Control panel                                                       -->
+<!-- ------------------------------------------------------------------ -->
+<button id="panelToggle" class="panel-toggle" aria-expanded="true"
+        aria-controls="panel" title="Show/hide controls">&#9776;</button>
+
+<aside id="panel" class="panel">
+
+  <section class="sect">
+    <h2>Feed</h2>
+    <label class="row switch">
+      <input type="checkbox" id="mockToggle">
+      <span>Mock feed <small>(no game needed)</small></span>
+    </label>
+    <label class="row">
+      <span class="lbl">Server</span>
+      <input type="text" id="serverInput" placeholder="same origin"
+             spellcheck="false" autocomplete="off">
+    </label>
+    <p class="hint">
+      Blank uses the page's own origin, which is what you want when the plugin
+      is serving this page. Otherwise e.g. <code>http://192.168.1.20:8088</code>.
+    </p>
+    <p class="row status"><span class="dot" id="feedDot"></span><span id="feedStatus">Idle</span></p>
+  </section>
+
+  <section class="sect">
+    <h2>Calibration</h2>
+    <p class="hint" id="calSummary">Not calibrated.</p>
+
+    <div class="calpoint" data-point="0">
+      <h3>Point A</h3>
+      <div class="row">
+        <button class="btn cal-capture">Capture position</button>
+        <span class="chip cal-game">&mdash;</span>
+      </div>
+      <div class="row">
+        <button class="btn cal-pick">Pick on map</button>
+        <span class="chip cal-img">&mdash;</span>
+      </div>
+    </div>
+
+    <div class="calpoint" data-point="1">
+      <h3>Point B <small>far from A</small></h3>
+      <div class="row">
+        <button class="btn cal-capture">Capture position</button>
+        <span class="chip cal-game">&mdash;</span>
+      </div>
+      <div class="row">
+        <button class="btn cal-pick">Pick on map</button>
+        <span class="chip cal-img">&mdash;</span>
+      </div>
+    </div>
+
+    <p class="hint" id="calHint">
+      Stand at a landmark in game, hit <em>Capture position</em>, then
+      <em>Pick on map</em> and click that same spot on the image. Repeat far
+      away for point&nbsp;B.
+    </p>
+
+    <div class="row">
+      <button class="btn primary" id="calApply" disabled>Apply</button>
+      <button class="btn" id="calReset">Reset</button>
+    </div>
+  </section>
+
+  <section class="sect">
+    <h2>View</h2>
+    <label class="row switch">
+      <input type="checkbox" id="followToggle" checked>
+      <span>Follow player</span>
+    </label>
+    <label class="row">
+      <span class="lbl">Trail</span>
+      <input type="range" id="trailRange" min="0" max="2000" step="50">
+      <output id="trailOut"></output>
+    </label>
+    <div class="row">
+      <button class="btn" id="trailClear">Clear trail</button>
+      <button class="btn" id="recentre">Recentre</button>
+    </div>
+  </section>
+
+  <section class="sect">
+    <h2>Map image</h2>
+    <label class="filebtn small">
+      <input type="file" id="mapFile" accept="image/*">
+      <span>Replace image&hellip;</span>
+    </label>
+    <p class="hint" id="imgInfo"></p>
+  </section>
+
+</aside>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- HUD                                                                 -->
+<!-- ------------------------------------------------------------------ -->
+<div id="hud" class="hud">
+  <div class="hud-item speed">
+    <b id="hudSpeed">0</b><span class="unit">mph</span>
+  </div>
+  <div class="hud-item">
+    <span class="cap">Vehicle</span><b id="hudVehicle">&mdash;</b>
+  </div>
+  <div class="hud-item">
+    <span class="cap">Wanted</span><b id="hudWanted" class="stars">&mdash;</b>
+  </div>
+  <div class="hud-item">
+    <span class="cap">Time</span><b id="hudClock">--:--</b>
+  </div>
+  <div class="hud-item">
+    <span class="cap">World</span><b id="hudPos" class="mono">&mdash;</b>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="vendor/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

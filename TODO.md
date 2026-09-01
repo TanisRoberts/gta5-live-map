@@ -5,38 +5,89 @@ stage checklist in [README.md](README.md) for what is actually built.
 
 ---
 
-## 1. Move "Follow player" onto the map as GPS-style icon buttons
+## 1. UI rebuild — satnav layout
 
-Take **Follow player** and **Recentre** out of the control panel and put them on
-the map itself, bottom-right, the way Google Maps does it.
+Replace the single control panel with a Google-Maps-navigation / Uber hybrid:
+four corner cards floating over a full-bleed map, no persistent sidebar.
 
-- Both are icon buttons, not labelled rows.
-- **Follow player** is a toggle and needs a visibly distinct on/off state.
-- **Recentre** stays a momentary action.
-- Bottom-right, stacked, clear of the Leaflet attribution and the panel.
+```
+┌─────────────────────────┬─────────────────────────┐
+│  NEXT DIRECTION         │        SETTINGS ▾       │
+│  (top left)             │   + character avatar    │
+│                         │        (top right)      │
+│                                                   │
+│                  [ M A P ]                        │
+│                                                   │
+│  VEHICLE CARD           │    MAP CONTROLS         │
+│  make / model /         │    + SPEEDOMETER        │
+│  colour / plate         │      (bottom right)     │
+│  (bottom left)          │                         │
+└─────────────────────────┴─────────────────────────┘
+```
 
-Implement as a Leaflet control (`L.Control` in the `bottomright` corner) rather
-than a floating div, so it moves with the map chrome and stays out of the way on
-a phone.
+This supersedes the old "move Follow player onto the map" item — those buttons
+are now part of the bottom-right cluster.
 
-Worth handling while in here: follow mode currently does nothing when you are
-zoomed out far enough to see the whole map, because `maxBounds` leaves nowhere to
-pan. As a panel checkbox that is invisible; as a lit-up GPS button that does
-nothing when pressed, it will read as broken. Either grey the button out at that
-zoom, or have it zoom in to a sensible follow level.
+### Build order, easiest first
 
-## 2. Rework the visual design
+The four corners are **not** equally feasible. Ordered by what actually blocks
+them:
+
+**a. Bottom right — map controls + speedometer.** Buildable today, nothing new
+needed. Follow and Recentre become icon buttons (a `L.Control` in the
+`bottomright` corner, not a floating div, so it moves with the map chrome).
+Speed is already in the feed.
+
+Carry over from the old item: follow mode does nothing when zoomed out far
+enough to see the whole map, because `maxBounds` leaves nowhere to pan. Harmless
+as a checkbox, but a lit-up GPS button that does nothing reads as broken. Either
+disable it at that zoom or have it zoom to a sensible follow level.
+
+**b. Bottom left — vehicle card.** Needs three new plugin fields. `vehicleClass`
+already ships; make/model, colour and plate do not:
+
+| Field | Where it comes from |
+|---|---|
+| Model | `Vehicle.LocalizedName` — already sent as `vehicleDisplayName` |
+| Make | Not cleanly separable from model in the API; may need a lookup table, or just show the model |
+| Colour | `Vehicle.Mods.PrimaryColor` (an enum — needs mapping to a display name and a swatch) |
+| Registration | `Vehicle.Mods.LicensePlate` |
+
+Small, contained plugin work. Do it in one pass with item 4's needs.
+
+**c. Top right — settings + character avatar.** Detecting *which* character is
+active is easy (compare the player ped's model hash against Michael / Franklin /
+Trevor). Two catches:
+
+- **The artwork is Rockstar's.** Character portraits cannot be committed here,
+  same rule as the map image. Either generate a neutral avatar (initial, or a
+  silhouette in the character's signature colour), or treat portraits as a
+  user-supplied local asset like the map.
+- Settings content largely already exists — it is the current panel, restyled
+  into a dropdown.
+
+**d. Top left — next direction.** **Blocked.** This is turn-by-turn navigation,
+which needs routing (item 3c), which needs road geometry the client does not
+have. Do not design around this arriving soon.
+
+Worth deciding early: build the card as a placeholder that renders a
+straight-line bearing and distance to a manual marker (item 3b). That gives the
+layout something real to show, and degrades honestly, without pretending to
+route.
+
+## 2. Visual design language
 
 The current look is generic dark-blue. Keep it dark, but give it a considered
-identity of its own.
+identity — now with item 1's layout as the frame to design within.
 
 Everything is already driven by CSS custom properties at the top of
 [web/style.css](web/style.css), so the palette is one place to change. The
-structural work is the rest of it: panel, HUD, typography, marker, spacing.
+structural work is typography, card treatment, spacing, and the marker.
 
-Worth deciding up front: this is a satnav you glance at from across a desk or on
-a phone propped up while driving. That argues for fewer, larger, higher-contrast
-elements than a dense dashboard.
+The viewing distance is the constraint that should drive it: this is read from a
+sofa, on a second monitor scaled to 150–200%. That argues for far fewer, far
+larger, higher-contrast elements than a dense dashboard — closer to a car's head
+unit than a web app.
 
 ## 3. Quest markers, manual markers, and navigation
 

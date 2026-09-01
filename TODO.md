@@ -75,13 +75,40 @@ is added.
 
 Needs a legend, or the colours mean nothing.
 
-## 5. Switchable base layers (atlas / satellite / road / stylised)
+## 5. Tiled base map, and switchable layers
 
-Hold more than one map image and switch between them, the way the online map
-sites offer atlas, satellite, road and UV views.
+### 5a. Move from a single image to tiles
 
-Client-side this is a Leaflet layer control plus one IndexedDB entry per layer
-rather than the single `mapImage` key used today.
+Replace `L.imageOverlay` with `L.tileLayer` so only the visible tiles are
+fetched. A 4096×4096 base map decodes to ~67 MB of RGBA in the browser no matter
+how small the file is on disk, and `imageOverlay` holds all of it at every zoom —
+which matters most on the phone this is meant to be viewed on.
+
+The calibration maths is unaffected: `CRS.Simple` and the game→pixel transform
+work the same against a tile pyramid.
+
+Two sources of tiles, and the pipeline should not care which:
+
+- The game's own minimap textures are **already tiled** at native resolution with
+  no HUD baked in. Extracting them needs OpenIV or CodeWalker.
+- Anything else (a pause-map screenshot, a community render) needs slicing into a
+  `{z}/{x}/{y}` pyramid. Worth writing a small slicer using `System.Drawing` —
+  no new dependencies.
+
+The plugin's HTTP server already serves static files, so it serves tiles as-is.
+
+### 5b. Switchable layers
+
+Hold more than one base map and switch between them, the way the online map sites
+offer atlas, satellite, road and UV views.
+
+**Note there is no satellite tile set in the game** — GTA V's map UI only ever
+draws the road/atlas style. Satellite views seen online are community renders of
+the 3D world, not extractable assets. So this is only worth building if a second
+base map actually turns up from somewhere.
+
+Client-side this is a Leaflet layer control plus one entry per layer rather than
+the single `mapImage` key used today.
 
 **The part to settle first:** one calibration only covers every layer if the
 images share dimensions and cover the same area. Mixing a pause-map screenshot at

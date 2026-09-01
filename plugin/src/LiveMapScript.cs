@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
@@ -77,54 +78,98 @@ namespace GtaLiveMap
         private static string ResolveBaseDirectory()
         {
             // SHVDN shadow-copies plugin assemblies into the .NET download cache
-            // (%LOCALAPPDATA%\assembly\dl3\...), so Assembly.Location returns a
-            // real directory that is emphatically NOT where we were deployed —
+            // (%LOCALAPPDATA%\assembly\dl3\...), so Assembly.Location points at
+            // a real directory that is emphatically NOT where we were deployed —
             // no ini, no web root, and a log nobody will ever find.
             //
-            // The game process's base directory is the game root, and SHVDN
-            // always loads plugins from <game root>\scripts. Trust that first,
-            // and only fall back to asking the assembly where it thinks it is.
-            try
+            // Measured on SHVDN Enhanced v1.1.0.6: the script AppDomain's base
+            // directory IS the scripts folder itself, not the game root. Rather
+            // than bet on any one host's layout, gather the candidates and pick
+            // whichever actually contains our deployed DLL.
+            List<string> candidates = new List<string>();
+
+            string appBase = SafeAppDomainBase();
+            candidates.Add(appBase);
+            if (!string.IsNullOrEmpty(appBase))
             {
-                string scripts = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts");
-                if (Directory.Exists(scripts))
-                {
-                    return scripts;
-                }
+                candidates.Add(SafeCombine(appBase, "scripts"));
             }
-            catch { }
 
             Assembly self = Assembly.GetExecutingAssembly();
+            candidates.Add(SafeDirectoryOf(SafeLocation(self)));
+            candidates.Add(SafeDirectoryOf(SafeCodeBasePath(self)));
 
-            try
+            foreach (string candidate in candidates)
             {
-                string location = self.Location;
-                if (!string.IsNullOrEmpty(location))
+                if (LooksLikeOurFolder(candidate))
                 {
-                    string dir = Path.GetDirectoryName(location);
-                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-                    {
-                        return dir;
-                    }
+                    return candidate;
                 }
             }
-            catch { }
 
-            try
+            // Nothing held the DLL (renamed on deploy?). Settle for anything real.
+            foreach (string candidate in candidates)
             {
-                string codeBase = self.CodeBase;
-                if (!string.IsNullOrEmpty(codeBase))
+                if (!string.IsNullOrEmpty(candidate) && SafeDirectoryExists(candidate))
                 {
-                    string dir = Path.GetDirectoryName(new Uri(codeBase).LocalPath);
-                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-                    {
-                        return dir;
-                    }
+                    return candidate;
                 }
             }
-            catch { }
 
             return AppDomain.CurrentDomain.BaseDirectory;
+        }
+
+        private static bool LooksLikeOurFolder(string directory)
+        {
+            if (string.IsNullOrEmpty(directory) || !SafeDirectoryExists(directory))
+            {
+                return false;
+            }
+
+            try
+            {
+                return File.Exists(Path.Combine(directory, "LiveMap.dll"));
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool SafeDirectoryExists(string path)
+        {
+            try { return Directory.Exists(path); } catch { return false; }
+        }
+
+        private static string SafeAppDomainBase()
+        {
+            try { return AppDomain.CurrentDomain.BaseDirectory; } catch { return null; }
+        }
+
+        private static string SafeCombine(string a, string b)
+        {
+            try { return Path.Combine(a, b); } catch { return null; }
+        }
+
+        private static string SafeLocation(Assembly assembly)
+        {
+            try { return assembly.Location; } catch { return null; }
+        }
+
+        private static string SafeCodeBasePath(Assembly assembly)
+        {
+            try
+            {
+                string codeBase = assembly.CodeBase;
+                return string.IsNullOrEmpty(codeBase) ? null : new Uri(codeBase).LocalPath;
+            }
+            catch { return null; }
+        }
+
+        private static string SafeDirectoryOf(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath)) { return null; }
+            try { return Path.GetDirectoryName(filePath); } catch { return null; }
         }
 
         private void OnTick(object sender, EventArgs e)

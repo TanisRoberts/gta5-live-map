@@ -24,7 +24,7 @@ gta5-live-map/
 
 - [x] Stage 1 — repo skeleton
 - [x] Stage 2 — web client, driven by the mock feed
-- [~] Stage 3 — the C# plugin (written; needs a compile against ScriptHookVDotNet3.dll)
+- [x] Stage 3 — the C# plugin (running in-game)
 
 ## Requirements (GTA V **Enhanced**)
 

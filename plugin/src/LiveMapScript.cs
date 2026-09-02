@@ -251,7 +251,8 @@ namespace GtaLiveMap
             Vehicle vehicle = inVehicle ? ped.CurrentVehicle : null;
 
             float speed;
-            float maxSpeed = 0f;
+            float rpm = 0f;
+            float fuel = -1f;
             int gear = 0;
             string vehicleName = null;
             string vehicleClass = null;
@@ -262,14 +263,14 @@ namespace GtaLiveMap
             {
                 speed = vehicle.Speed;
 
-                // The speedometer scales its bar to the vehicle's own top speed,
-                // so a Sanchez and a Super fill it at very different real speeds.
-                //
-                // Via the native, not Entity.MaxSpeed — that property is
-                // write-only (it sets a limiter), and reading it does not
-                // compile. This returns m/s, matching Speed, so the ratio needs
-                // no conversion.
-                maxSpeed = Function.Call<float>(Hash.GET_VEHICLE_ESTIMATED_MAX_SPEED, vehicle);
+                // Engine revs. Already normalised 0..1 by the game -- there is
+                // no readable redline or maximum anywhere in the API, so the
+                // client picks its own (0.85) for the red zone.
+                rpm = vehicle.CurrentRPM;
+
+                // Petrol remaining, so we can find out whether it actually
+                // drains in story mode. -1 means "not in a vehicle".
+                fuel = vehicle.FuelLevel;
                 gear = vehicle.CurrentGear;
 
                 vehicleName = vehicle.LocalizedName;
@@ -314,7 +315,8 @@ namespace GtaLiveMap
             sb.Append(",\"z\":").Append(Json.Number(position.Z));
             sb.Append(",\"heading\":").Append(Json.Number(heading));
             sb.Append(",\"speed\":").Append(Json.Number(speed));
-            sb.Append(",\"maxSpeed\":").Append(Json.Number(maxSpeed));
+            sb.Append(",\"rpm\":").Append(Json.Number(rpm));
+            sb.Append(",\"fuel\":").Append(Json.Number(fuel));
             sb.Append(",\"gear\":").Append(Json.Number(gear));
             sb.Append(",\"inVehicle\":").Append(Json.Bool(inVehicle));
             sb.Append(",\"vehicleDisplayName\":").Append(Json.String(vehicleName));

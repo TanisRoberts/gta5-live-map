@@ -135,30 +135,36 @@ body.ui-hidden .panel { display: none; }
 /* ------------------------------------------------------------------ */
 /* Signal light                                                        */
 /* ------------------------------------------------------------------ */
-/* No card, no background — a recording light, not a widget. */
+/*
+ * Recording-light styling, but on a card ground: over pale roads the bare text
+ * had nowhere near enough contrast to be trusted at a glance.
+ */
 .signal {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .06em;
+  gap: 7px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .07em;
   text-transform: uppercase;
   color: var(--good);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, .9);
 }
 .signal-dot {
-  width: 8px; height: 8px;
+  width: 9px; height: 9px;
   border-radius: 50%;
   background: var(--good);
-  box-shadow: 0 0 6px var(--good);
+  box-shadow: 0 0 7px var(--good);
 }
-.signal.lost { color: var(--bad); }
+.signal.lost { color: var(--bad); border-color: rgba(248, 81, 73, .5); }
 .signal.lost .signal-dot {
   background: var(--bad);
-  box-shadow: 0 0 6px var(--bad);
+  box-shadow: 0 0 7px var(--bad);
   animation: pulse 1.4s ease-in-out infinite;
 }
+/* Paused is not the same failure as disconnected, and should not look like it. */
+.signal.paused { color: var(--star); border-color: rgba(255, 210, 63, .5); }
+.signal.paused .signal-dot { background: var(--star); box-shadow: 0 0 7px var(--star); animation: none; }
 @keyframes pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) {
   .signal.lost .signal-dot { animation: none; }
@@ -186,12 +192,14 @@ body.ui-hidden .panel { display: none; }
 .icon-btn.small { width: 30px; height: 30px; border: 0; background: none; box-shadow: none; }
 .icon-btn.small svg { width: 16px; height: 16px; }
 
-/* Toggles read as lit when active. */
+/* Active toggles are filled solid — a tinted background did not read as "on"
+   at a glance from across a room. */
 .icon-btn[aria-pressed="true"] {
-  color: var(--accent);
-  border-color: var(--accent-dk);
-  background: rgba(27, 127, 176, .22);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06121a;
 }
+.icon-btn[aria-pressed="true"]:hover { background: #6bcfff; border-color: #6bcfff; }
 
 .avatar {
   display: grid;
@@ -210,7 +218,7 @@ body.ui-hidden .panel { display: none; }
 /* ------------------------------------------------------------------ */
 /* Cards                                                               */
 /* ------------------------------------------------------------------ */
-.chip-card, .vehicle-card, .nav-card, .speedo {
+.vehicle-card, .nav-card, .speedo, .signal {
   background: var(--card-bg);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -219,50 +227,48 @@ body.ui-hidden .panel { display: none; }
 }
 [hidden] { display: none !important; }
 
+/* Card text runs about 20% larger than a desktop app would use — this is read
+   from a sofa, not from a desk. */
 .cap {
   display: block;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
-/* District — deliberately tiny */
-.chip-card { padding: 5px 10px; }
-.chip-card b { font-size: 13px; font-weight: 600; }
-
 /* Vehicle */
-.vehicle-card { padding: 8px 12px; min-width: 150px; }
-.vehicle-card b { display: block; font-size: 15px; font-weight: 600; }
+.vehicle-card { padding: 10px 15px; min-width: 165px; }
+.vehicle-card b { display: block; font-size: 18px; font-weight: 600; }
 .vehicle-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 3px;
-  font-size: 11px;
+  gap: 9px;
+  margin-top: 4px;
+  font-size: 13px;
   color: var(--muted);
 }
-.v-colour { display: inline-flex; align-items: center; gap: 5px; }
+.v-colour { display: inline-flex; align-items: center; gap: 6px; }
 .v-colour::before {
   content: "";
-  width: 10px; height: 10px;
+  width: 12px; height: 12px;
   border-radius: 3px;
   background: var(--swatch, #666);
   outline: 1px solid rgba(0, 0, 0, .5);
 }
 .plate {
-  padding: 1px 6px;
+  padding: 2px 7px;
   border: 1px solid var(--line);
   border-radius: 3px;
   background: rgba(0, 0, 0, .35);
-  font: 600 11px/1.4 ui-monospace, Consolas, monospace;
+  font: 600 13px/1.4 ui-monospace, Consolas, monospace;
   letter-spacing: .06em;
   color: var(--text);
 }
 
 /* Nav strip — the one card that gets centre stage */
 .nav-card {
-  padding: 8px 16px;
+  padding: 10px 19px;
   text-align: center;
   transition: opacity .25s ease;
 }
@@ -270,16 +276,16 @@ body.ui-hidden .panel { display: none; }
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 9px;
   margin-bottom: 2px;
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--accent);
 }
-.nav-arrow { width: 20px; height: 20px; fill: currentColor; }
+.nav-arrow { width: 24px; height: 24px; fill: currentColor; }
 .nav-card .street {
   display: block;
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 600;
   line-height: 1.25;
   white-space: nowrap;
@@ -288,7 +294,7 @@ body.ui-hidden .panel { display: none; }
 }
 .nav-card .street-sub {
   display: block;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--muted);
 }
 .nav-card .street-sub:empty { display: none; }
@@ -297,14 +303,70 @@ body.ui-hidden .panel { display: none; }
 
 /* Speedometer — beside the controls, not in them */
 .speedo {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  padding: 6px 12px;
+  padding: 8px 14px;
   margin-right: 2px;
+  min-width: 150px;
 }
-.speedo b { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.speedo .unit { font-size: 10px; color: var(--muted); }
+.speedo-top { display: flex; align-items: baseline; gap: 7px; }
+.speedo b {
+  font-size: 32px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  margin-left: auto;
+}
+.speedo .unit { font-size: 12px; color: var(--muted); }
+
+/* Current gear, as a car's cluster shows it. */
+.gear {
+  display: grid;
+  place-items: center;
+  width: 24px; height: 24px;
+  border: 2px solid var(--good);
+  border-radius: 50%;
+  color: var(--good);
+  font: 700 13px/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Engine revs, normalised 0..1 by the game. Sits under the speed readout and
+ * behaves like a cluster tacho: fills left to right, with a marked red zone
+ * from 85% on. There is no readable redline in the game API, so 85% is our
+ * own choice. Only transform animates, so it stays off the main thread while
+ * the map moves.
+ */
+.rpm-bar {
+  position: relative;
+  height: 7px;
+  margin-top: 7px;
+  border-radius: 4px;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(90deg,
+      rgba(255, 255, 255, .22) 0 1px, transparent 1px 5px),
+    rgba(255, 255, 255, .07);
+}
+.rpm-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transform: scaleX(0);
+  background: linear-gradient(90deg, var(--accent), #9fe4ff);
+  transition: transform .12s linear, background .12s linear;
+}
+/* Past the red zone the fill itself turns, so it reads at a glance. */
+.rpm-fill.over {
+  background: linear-gradient(90deg, #ff8a5c, var(--bad));
+}
+.rpm-red {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 85%; right: 0;
+  background: repeating-linear-gradient(90deg,
+    var(--bad) 0 2px, transparent 2px 5px);
+  opacity: .85;
+}
 
 /* Control stack */
 .controls { display: flex; flex-direction: column; gap: 6px; }

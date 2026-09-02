@@ -50,21 +50,17 @@
 <!-- ------------------------------------------------------------------ -->
 <div id="hud">
 
-  <!-- Top left: district -->
+  <!-- Top left: connection state. Deliberately outside the settings panel —
+       a dead feed must be visible without opening anything, or a frozen
+       marker just looks like a paused game. -->
   <div class="corner top-left">
-    <div class="chip-card" id="districtCard" hidden>
-      <span class="cap">District</span>
-      <b id="districtName">&mdash;</b>
-    </div>
-  </div>
-
-  <!-- Top right: signal light, settings, avatar -->
-  <div class="corner top-right">
-    <!-- Deliberately outside the settings panel: a dead feed must be visible
-         without opening anything, or a frozen marker looks like a paused game. -->
     <div class="signal" id="signal" role="status" aria-live="polite">
       <span class="signal-dot"></span><span id="signalText">Live</span>
     </div>
+  </div>
+
+  <!-- Top right: settings and avatar -->
+  <div class="corner top-right">
     <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings" aria-expanded="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-cog"/></svg>
     </button>
@@ -99,7 +95,18 @@
   <!-- Bottom right: speedometer + map controls -->
   <div class="corner bottom-right">
     <div class="speedo" id="speedo">
-      <b id="speedValue">0</b><span class="unit">mph</span>
+      <div class="speedo-top">
+        <span class="gear" id="gear" hidden>1</span>
+        <b id="speedValue">0</b>
+        <span class="unit" id="speedUnit">mph</span>
+      </div>
+      <!-- Engine revs, like a cluster tacho. The game reports RPM already
+           normalised 0..1 and exposes no redline, so the red zone is our own
+           choice at 85%. -->
+      <div class="rpm-bar" id="rpmBar" hidden>
+        <div class="rpm-fill" id="rpmFill"></div>
+        <div class="rpm-red"></div>
+      </div>
     </div>
 
     <div class="controls">

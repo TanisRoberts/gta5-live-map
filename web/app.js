@@ -45,6 +45,10 @@ const TRAIL_MIN_MOVE = 3;     // game units between trail points
 const ZOOM_VEHICLE = 0.5;
 const ZOOM_FOOT    = 2;
 
+// Where the tacho's red zone starts. The game exposes no redline of its own,
+// so this is our choice, not a value read from the vehicle.
+const RPM_REDLINE = 0.85;
+
 /*
  * Trail styling.
  *
@@ -404,6 +408,9 @@ let feedError = null;
 let failures  = 0;
 let nextTryAt = 0;
 
+/** Last time /pos answered at all, regardless of whether the sample was new. */
+let lastHttpOkAt = -Infinity;
+
 async function pollOnce() {
   // Back off while the endpoint is down, so a missing plugin doesn't hammer it
   // (and the console) ten times a second.
@@ -414,6 +421,10 @@ async function pollOnce() {
   try {
     const r = await fetch(posUrl(), { signal: ctrl.signal, cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
+    // Note the HTTP success separately from the sample. If the server keeps
+    // answering but the timestamp stops advancing, the game is paused rather
+    // than unreachable — a very different thing to tell the user.
+    lastHttpOkAt = performance.now();
     pushSample(await r.json());
     feedError = null;
     failures  = 0;
@@ -497,12 +508,29 @@ function mockTick() {
 
   const place = MOCK_STREETS[Math.floor(t / 20000) % MOCK_STREETS.length];
 
+  // Gear and revs, derived from speed so the tacho sweeps and resets the way a
+  // cluster does, crossing the red zone just before each change. Kept in the
+  // mock because a mock that has drifted from the plugin's shape hides bugs:
+  // this one previously sent no vehicleClass, so every mock vehicle read as a
+  // car and a broken trail-colour path looked fine.
+  const MOCK_TOP_SPEED = 40;   // m/s at which top gear is reached
+  const MOCK_GEARS = 6;
+  let gear = 0, rpm = 0;
+  if (veh) {
+    const f = Math.min(speed / MOCK_TOP_SPEED, 0.999);
+    gear = Math.floor(f * MOCK_GEARS) + 1;
+    rpm = 0.2 + 0.75 * ((f * MOCK_GEARS) % 1);
+  }
+
   pushSample({
     x: p.x,
     y: p.y,
     z: 30 + 25 * Math.sin(mockTheta * 2),
     heading: mockHeading,
     speed,
+    rpm,
+    gear,
+    fuel: veh ? 65 : -1,
     inVehicle: !!veh,
     vehicleDisplayName: veh ? veh.name : null,
     vehicleClass:       veh ? veh.cls : null,
@@ -548,15 +576,28 @@ function updateFeedStatus() {
    * cannot afford it. The brief settling window covers the gap between
    * becoming visible and the first poll landing.
    */
-  const settling = document.hidden || (performance.now() - becameVisibleAt < 1200);
-  const fresh = settling || (performance.now() - lastGoodAt < staleMs());
+  const now = performance.now();
+  const settling = document.hidden || (now - becameVisibleAt < 1200);
+  const fresh = settling || (now - lastGoodAt < staleMs());
+
+  /*
+   * A paused game still answers /pos — the HTTP thread is untouched — but the
+   * script stops ticking, so the timestamp freezes and no new samples arrive.
+   * That is a completely different situation from the plugin being gone, and
+   * calling both "No signal" sent us chasing a phantom once already.
+   */
+  const paused = !fresh && !settings.mock && (now - lastHttpOkAt < 3000);
 
   // The always-visible light. A frozen marker with no explanation reads as a
   // paused game rather than a broken feed, so this must not live behind the
   // settings cog.
   const signal = $('#signal'), signalText = $('#signalText');
-  signal.classList.toggle('lost', !fresh);
-  signalText.textContent = settings.mock ? 'Mock' : (fresh ? 'Live' : 'No signal');
+  signal.classList.toggle('lost', !fresh && !paused);
+  signal.classList.toggle('paused', paused);
+  signalText.textContent = settings.mock ? 'Mock'
+    : fresh  ? 'Live'
+    : paused ? 'Paused'
+    : 'No signal';
   $('#navCard').classList.toggle('stale', !fresh);
 
   // Detail, for the Advanced section.
@@ -913,7 +954,23 @@ function updateHud() {
   // Speed
   const kmh = s.speed * 3.6;
   $('#speedValue').textContent = Math.round(settings.units === 'kmh' ? kmh : kmh * 0.621371);
-  $('#speedo').querySelector('.unit').textContent = settings.units === 'kmh' ? 'km/h' : 'mph';
+  $('#speedUnit').textContent = settings.units === 'kmh' ? 'km/h' : 'mph';
+
+  // Tacho. RPM arrives normalised 0..1, so it needs no scaling — but it is
+  // only meaningful in a vehicle, and idles around 0.2 rather than 0.
+  const bar = $('#rpmBar');
+  const hasRpm = s.inVehicle && Number.isFinite(s.rpm);
+  bar.hidden = !hasRpm;
+  if (hasRpm) {
+    const frac = Math.max(0, Math.min(1, s.rpm));
+    $('#rpmFill').style.transform = 'scaleX(' + frac.toFixed(3) + ')';
+    $('#rpmFill').classList.toggle('over', frac >= RPM_REDLINE);
+  }
+
+  const gear = $('#gear');
+  const showGear = s.inVehicle && Number.isFinite(s.gear) && s.gear > 0;
+  gear.hidden = !showGear;
+  if (showGear) gear.textContent = s.gear;
 
   // Vehicle card — absent entirely on foot, rather than showing empty fields.
   const vehicleCard = $('#vehicleCard');
@@ -939,10 +996,6 @@ function updateHud() {
   $('#streetSub').textContent =
     [s.crossingStreet ? 'near ' + s.crossingStreet : null, s.zoneName]
       .filter(Boolean).join(' · ');
-
-  const district = $('#districtCard');
-  district.hidden = !s.zoneName;
-  if (s.zoneName) $('#districtName').textContent = s.zoneName;
 
   updateVignette(s.wantedLevel || 0);
 }

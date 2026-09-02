@@ -228,9 +228,46 @@ most makes it feel like a satnav.
 It only gives the street at a point, not road geometry, so it does **not** on its
 own unlock routing (3c) — but it is the natural first step toward it.
 
+## 9. Vehicle damage indicator
+
+A BeamNG-style damage readout: a top-down schematic of the vehicle with each
+part tinted by its condition, so a glance says "front left tyre gone, offside
+headlight out" rather than just "damaged".
+
+Everything needed is already readable on the script thread — this is a
+plugin-side data item first, and a drawing job second.
+
+| Part | Source |
+|---|---|
+| Tyres, per wheel | `Vehicle.Wheels` (`VehicleWheelCollection`) |
+| Doors, per door | `Vehicle.Doors` (`VehicleDoorCollection`) |
+| Windows, per window | `Vehicle.Windows` (`VehicleWindowCollection`) |
+| Headlights | `IsLeftHeadLightBroken`, `IsRightHeadLightBroken` |
+| Bumpers | `IsFrontBumperBrokenOff`, `IsRearBumperBrokenOff` |
+| Overall body | `BodyHealth`, `HasDamageDecals` |
+| Engine | `EngineHealth`, `IsOnFire` |
+| Petrol tank | `PetrolTankHealth` |
+| Rotors (helicopters) | `HeliMainRotorHealth`, `HeliTailRotorHealth` |
+
+Three things to settle rather than discover later:
+
+- **Do not read this every tick.** The per-part collections mean walking wheels,
+  doors and windows on the script thread, at 20 Hz, forever. Damage changes far
+  more slowly than position — throttle it the way `PlaceCheckIntervalMs` already
+  throttles the street lookup, and consider its own endpoint rather than
+  bloating the position payload.
+- **Wheel and door counts vary by vehicle**, and a bike has neither doors nor
+  four wheels. The schematic has to adapt, or degrade to a simple parts list.
+- **The artwork must be ours.** A top-down vehicle silhouette drawn as our own
+  SVG, not anything extracted from the game — same rule as the map image and
+  the character portraits.
+
+Worth building the parts list first and the schematic second: the list is honest
+and useful immediately, and it proves the data before any drawing work.
+
 ---
 
-*Items 7 and 8 are deliberately last. The MVP is the road map view alone; expand
+*Item 7 is deliberately last. The MVP is the road map view alone; expand
 only once that is working and tested.*
 
 ## 7. Satellite view

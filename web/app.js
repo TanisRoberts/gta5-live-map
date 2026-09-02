@@ -49,6 +49,13 @@ const ZOOM_FOOT    = 2;
 // so this is our choice, not a value read from the vehicle.
 const RPM_REDLINE = 0.85;
 
+// Engine condition. The game's scale runs 1000 down to 0, and on past it into
+// negatives once the engine is dead; the plugin sends it raw so these stay
+// tunable here.
+const ENGINE_MAX  = 1000;
+const ENGINE_HURT = 700;   // below this it is visibly smoking
+const ENGINE_DEAD = 0;     // at or below, it will not run
+
 /*
  * Trail styling.
  *
@@ -456,12 +463,12 @@ async function pollOnce() {
  * trail category, and carry the colour/plate/street fields the cards will need.
  */
 const MOCK_VEHICLES = [
-  { name: 'Sultan',      make: 'Karin',    cls: 'Sports',      colour: 'MetallicBlue',   plate: '46EEK572', stolen: false },
-  { name: 'Buffalo STX', make: 'Bravado',  cls: 'Sedans',      colour: 'MetallicBlack',  plate: '11ABC222', stolen: true  },
-  null,                                                                                   // on foot
-  { name: 'Sanchez',     make: 'Maibatsu', cls: 'Motorcycles', colour: 'MatteRed',       plate: '99XYZ001', stolen: false },
-  { name: 'Dinghy',      make: 'Speedophile', cls: 'Boats',    colour: 'MetallicWhite',  plate: null,       stolen: false },
-  { name: 'Buzzard',     make: 'Nagasaki', cls: 'Helicopters', colour: 'MetallicGreen',  plate: null,       stolen: true  },
+  { name: 'Sultan',      make: 'Karin',       cls: 'Sports',      colour: 'MetallicBlue',  plate: '46EEK572', wheels: 4 },
+  { name: 'Buffalo STX', make: 'Bravado',     cls: 'Sedans',      colour: 'MetallicBlack', plate: '11ABC222', wheels: 4 },
+  null,                                                                                    // on foot
+  { name: 'Sanchez',     make: 'Maibatsu',    cls: 'Motorcycles', colour: 'MatteRed',      plate: '99XYZ001', wheels: 2 },
+  { name: 'Dinghy',      make: 'Speedophile', cls: 'Boats',       colour: 'MetallicWhite', plate: null,       wheels: 0 },
+  { name: 'Buzzard',     make: 'Nagasaki',    cls: 'Helicopters', colour: 'MetallicGreen', plate: null,       wheels: 0 },
   null
 ];
 
@@ -537,7 +544,15 @@ function mockTick() {
     vehicleColor:       veh ? veh.colour : null,
     licensePlate:       veh ? veh.plate : null,
     vehicleMake:        veh ? veh.make : null,
-    isStolen:           veh ? veh.stolen : false,
+    /*
+     * Damage cycles so every tell-tale state can be seen with the game shut:
+     * the engine walks healthy -> damaged -> destroyed, and tyres go flat one
+     * at a time. A mock that only ever shows the happy path proves nothing.
+     */
+    engineHealth:       veh ? [1000, 1000, 450, 0][Math.floor(t / 9000) % 4] : 0,
+    onFire:             false,
+    tyresBurst:         veh ? Math.min(veh.wheels, Math.floor(t / 13000) % 3) : 0,
+    tyreCount:          veh ? veh.wheels : 0,
     // Engine and lights cycle so the tell-tales can be seen changing with the
     // game shut, rather than sitting in one state forever.
     engineRunning:      !!veh,
@@ -546,8 +561,6 @@ function mockTick() {
     // Cycles into the broken state so the red lights tell-tale can be seen
     // without shooting a car's headlights out.
     headlightsGone:     !!veh && Math.floor(t / 11000) % 4 === 3,
-    prevOwned:          veh ? !veh.stolen : false,
-    needsHotwire:       veh ? veh.stolen : false,
     streetName:     place.street,
     crossingStreet: place.crossing,
     zoneName:       place.zone,
@@ -977,7 +990,7 @@ function modeZoom(inVehicle) {
  * on its own says nothing to a screen reader.
  */
 function setTellTale(el, state, label) {
-  el.classList.remove('on', 'beam', 'warn');
+  el.classList.remove('on', 'beam', 'warn', 'caution');
   if (state) el.classList.add(state);
   el.setAttribute('aria-label', label);
 }
@@ -1019,8 +1032,22 @@ function updateHud() {
      * reminded of.
      */
     $('#statusRow').hidden = false;
-    setTellTale($('#stEngine'), s.engineRunning ? 'on' : '',
-                s.engineRunning ? 'Engine running' : 'Engine off');
+    /*
+     * Engine, by condition rather than by switch. Health runs 0..1000 and the
+     * plugin sends it raw, so these thresholds live here and can be retuned
+     * without a rebuild and a reload.
+     */
+    const eh = Number.isFinite(s.engineHealth) ? s.engineHealth : ENGINE_MAX;
+    const engineState = (s.onFire || eh <= ENGINE_DEAD) ? 'warn'
+                      : eh < ENGINE_HURT                ? 'caution'
+                      : s.engineRunning                 ? 'on'
+                      : '';
+    setTellTale($('#stEngine'), engineState,
+                s.onFire            ? 'Engine on fire'
+                : eh <= ENGINE_DEAD ? 'Engine destroyed'
+                : eh < ENGINE_HURT  ? 'Engine damaged'
+                : s.engineRunning   ? 'Engine running'
+                : 'Engine off');
     /*
      * Lights, in four states. Broken outranks everything: no amount of
      * switching them on matters once both units are gone, and the same
@@ -1035,8 +1062,16 @@ function updateHud() {
                 : s.highBeams    ? 'Full beam'
                 : s.lightsOn     ? 'Lights on'
                 : 'Lights off');
-    setTellTale($('#stStolen'), s.isStolen ? 'warn' : '',
-                s.isStolen ? 'Stolen vehicle' : 'Not flagged stolen');
+    /*
+     * Tyres. One flat is a caution; more than one is a genuine emergency, and
+     * the difference is worth a colour rather than a count nobody can read at
+     * this distance.
+     */
+    const flats = Number.isFinite(s.tyresBurst) ? s.tyresBurst : 0;
+    setTellTale($('#stTyres'), flats > 1 ? 'warn' : flats === 1 ? 'caution' : '',
+                flats === 0 ? 'Tyres intact'
+                : flats === 1 ? 'One flat tyre'
+                : flats + ' flat tyres');
 
     const gear = $('#gear');
     const showGear = Number.isFinite(s.gear) && s.gear > 0;

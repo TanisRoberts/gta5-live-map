@@ -251,13 +251,13 @@ body.ui-hidden .panel { display: none; }
 
 /* Vehicle */
 .vehicle-card { padding: 10px 15px; min-width: 165px; }
-.vehicle-card b { display: block; font-size: 18px; font-weight: 600; }
+.vehicle-card b { display: block; font-size: 26px; font-weight: 600; }
 .vehicle-meta {
   display: flex;
   align-items: center;
   gap: 9px;
   margin-top: 4px;
-  font-size: 13px;
+  font-size: 20px;
   color: var(--muted);
 }
 .v-colour { display: inline-flex; align-items: center; gap: 6px; }
@@ -273,7 +273,7 @@ body.ui-hidden .panel { display: none; }
   border: 1px solid var(--line);
   border-radius: 3px;
   background: rgba(0, 0, 0, .35);
-  font: 600 13px/1.4 ui-monospace, Consolas, monospace;
+  font: 600 20px/1.4 ui-monospace, Consolas, monospace;
   letter-spacing: .06em;
   color: var(--text);
 }
@@ -297,7 +297,7 @@ body.ui-hidden .panel { display: none; }
 .nav-arrow { width: 24px; height: 24px; fill: currentColor; }
 .nav-card .street {
   display: block;
-  font-size: 20px;
+  font-size: 26px;
   font-weight: 600;
   line-height: 1.25;
   white-space: nowrap;
@@ -306,7 +306,7 @@ body.ui-hidden .panel { display: none; }
 }
 .nav-card .street-sub {
   display: block;
-  font-size: 13px;
+  font-size: 20px;
   color: var(--muted);
 }
 .nav-card .street-sub:empty { display: none; }
@@ -400,13 +400,14 @@ body.ui-hidden .panel { display: none; }
 }
 .status-row svg {
   fill: currentColor;   /* without this the paths fill black and vanish on the card */
-  width: 18px; height: 18px;
+  width: 24px; height: 24px;
   color: var(--muted);
   opacity: .35;
   transition: color .15s linear, opacity .15s linear;
 }
 .status-row svg.on      { color: var(--good); opacity: 1; }
 .status-row svg.beam    { color: var(--accent); opacity: 1; }
+.status-row svg.caution { color: var(--star); opacity: 1; }
 .status-row svg.warn    { color: var(--bad); opacity: 1; }
 
 /* ------------------------------------------------------------------ */

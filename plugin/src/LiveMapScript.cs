@@ -35,6 +35,14 @@ namespace GtaLiveMap
         /// </summary>
         private const long PlaceCheckIntervalMs = 250;
 
+        /// <summary>
+        /// Burst tyres mean walking every wheel on the vehicle. That is far
+        /// too much to pay 20 times a second for a value that changes on the
+        /// scale of a gunfight, so it rides the same kind of throttle as the
+        /// street lookup.
+        /// </summary>
+        private const long DamageCheckIntervalMs = 250;
+
         private readonly Stopwatch _clock = Stopwatch.StartNew();
 
         private HttpServer _server;
@@ -47,6 +55,11 @@ namespace GtaLiveMap
         private string _streetName;
         private string _crossingStreet;
         private string _zoneName;
+
+        // Cached between damage lookups.
+        private long _nextDamageCheckMs;
+        private int _tyresBurst;
+        private int _tyreCount;
 
         public LiveMapScript()
         {
@@ -259,13 +272,14 @@ namespace GtaLiveMap
             string vehicleColor = null;
             string licensePlate = null;
             string vehicleMake = null;
-            bool isStolen = false;
+            float engineHealth = 0f;
+            bool onFire = false;
+            int tyresBurst = 0;
+            int tyreCount = 0;
             bool engineRunning = false;
             bool lightsOn = false;
             bool highBeams = false;
             bool headlightsGone = false;
-            bool prevOwned = false;
-            bool needsHotwire = false;
 
             if (vehicle != null)
             {
@@ -293,7 +307,11 @@ namespace GtaLiveMap
                                           vehicle.Model.Hash)));
                 if (LooksUnnamed(vehicleMake)) vehicleMake = null;
 
-                isStolen = vehicle.IsStolen;
+                // Raw, so the client owns the thresholds: nothing here knows
+                // what counts as "damaged" better than the thing drawing it,
+                // and tuning it should not need a rebuild and a reload.
+                engineHealth = vehicle.EngineHealth;
+                onFire = vehicle.IsOnFire;
                 engineRunning = vehicle.IsEngineRunning;
                 lightsOn = vehicle.AreLightsOn;
                 highBeams = vehicle.AreHighBeamsOn;
@@ -305,12 +323,34 @@ namespace GtaLiveMap
                 headlightsGone = Function.Call<bool>(
                     Hash.GET_BOTH_VEHICLE_HEADLIGHTS_DAMAGED, vehicle);
 
-                // IS_VEHICLE_STOLEN is not "you stole this" -- it is an
-                // internal flag that plenty of jacked traffic never carries.
-                // Sent alongside so we can see which of the three actually
-                // tracks a nicked car before deciding what the icon means.
-                prevOwned = vehicle.PreviouslyOwnedByPlayer;
-                needsHotwire = vehicle.NeedsToBeHotwired;
+                // Burst tyres, on a throttle -- see DamageCheckIntervalMs.
+                if (timestampMs >= _nextDamageCheckMs)
+                {
+                    _nextDamageCheckMs = timestampMs + DamageCheckIntervalMs;
+                    _tyresBurst = 0;
+                    _tyreCount = 0;
+
+                    VehicleWheelCollection wheels = vehicle.Wheels;
+                    if (wheels != null)
+                    {
+                        VehicleWheel[] all = wheels.GetAllWheels();
+                        if (all != null)
+                        {
+                            _tyreCount = all.Length;
+                            for (int i = 0; i < all.Length; i++)
+                            {
+                                VehicleWheel w = all[i];
+                                if (w == null) continue;
+                                // Punctured counts too: a flat is a flat well
+                                // before the tyre leaves the rim.
+                                if (w.IsBursted || w.IsPunctured) _tyresBurst++;
+                            }
+                        }
+                    }
+                }
+
+                tyresBurst = _tyresBurst;
+                tyreCount = _tyreCount;
 
                 VehicleModCollection mods = vehicle.Mods;
                 if (mods != null)
@@ -360,13 +400,14 @@ namespace GtaLiveMap
             sb.Append(",\"vehicleColor\":").Append(Json.String(vehicleColor));
             sb.Append(",\"licensePlate\":").Append(Json.String(licensePlate));
             sb.Append(",\"vehicleMake\":").Append(Json.String(vehicleMake));
-            sb.Append(",\"isStolen\":").Append(Json.Bool(isStolen));
+            sb.Append(",\"engineHealth\":").Append(Json.Number(engineHealth));
+            sb.Append(",\"onFire\":").Append(Json.Bool(onFire));
+            sb.Append(",\"tyresBurst\":").Append(Json.Number(tyresBurst));
+            sb.Append(",\"tyreCount\":").Append(Json.Number(tyreCount));
             sb.Append(",\"engineRunning\":").Append(Json.Bool(engineRunning));
             sb.Append(",\"lightsOn\":").Append(Json.Bool(lightsOn));
             sb.Append(",\"highBeams\":").Append(Json.Bool(highBeams));
             sb.Append(",\"headlightsGone\":").Append(Json.Bool(headlightsGone));
-            sb.Append(",\"prevOwned\":").Append(Json.Bool(prevOwned));
-            sb.Append(",\"needsHotwire\":").Append(Json.Bool(needsHotwire));
             sb.Append(",\"streetName\":").Append(Json.String(_streetName));
             sb.Append(",\"crossingStreet\":").Append(Json.String(_crossingStreet));
             sb.Append(",\"zoneName\":").Append(Json.String(_zoneName));

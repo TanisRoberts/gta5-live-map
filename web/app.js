@@ -591,6 +591,8 @@ function mockTick() {
     // Cycles into the broken state so the red lights tell-tale can be seen
     // without shooting a car's headlights out.
     headlightsGone:     !!veh && Math.floor(t / 11000) % 4 === 3,
+    headlightL:         !!veh && Math.floor(t / 11000) % 4 >= 2,
+    headlightR:         !!veh && Math.floor(t / 11000) % 4 === 3,
     streetName:     place.street,
     crossingStreet: place.crossing,
     zoneName:       place.zone,
@@ -1169,16 +1171,24 @@ function updateHud() {
                 : s.engineRunning   ? 'Engine running'
                 : 'Engine off');
     /*
-     * Lights, in four states. Broken outranks everything: no amount of
-     * switching them on matters once both units are gone, and the same
-     * answer covers a vehicle that never had headlights to begin with.
+     * Lights. Broken outranks the switch, because once a unit is gone what the
+     * switch says stops mattering — and one out is a caution while both is a
+     * warning, the same grammar as the tyres.
+     *
+     * The per-side natives are trusted for the count and the "both" native as
+     * a floor, so a vehicle the game reports as having no headlights at all
+     * still reads as unlit.
      */
-    const lightState = s.headlightsGone ? 'warn'
+    const outCount = (s.headlightL ? 1 : 0) + (s.headlightR ? 1 : 0);
+    const bothOut = !!s.headlightsGone || outCount >= 2;
+    const lightState = bothOut          ? 'warn'
+                     : outCount === 1   ? 'caution'
                      : s.highBeams      ? 'beam'
                      : s.lightsOn       ? 'on'
                      : '';
     setTellTale($('#stLights'), lightState,
-                s.headlightsGone ? 'No working headlights'
+                bothOut          ? 'No working headlights'
+                : outCount === 1 ? 'One headlight out'
                 : s.highBeams    ? 'Full beam'
                 : s.lightsOn     ? 'Lights on'
                 : 'Lights off');

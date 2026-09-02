@@ -1333,12 +1333,13 @@ function updateHud() {
   if (s.inVehicle) {
     vehicleCard.hidden = false;
     /*
-     * "Vapid Speedo" rather than "Speedo": the card looked bare with one short
-     * word on it. GET_MAKE_NAME_FROM_VEHICLE_MODEL supplies the make, but it
-     * does not answer for every model, so the model alone stays the fallback.
+     * Make above model, on separate lines. On one line a long name like
+     * "Albany Cavalcade" set the width of the whole card, and the make is the
+     * half you can lose — GET_MAKE_NAME_FROM_VEHICLE_MODEL does not answer for
+     * every model, so the make line simply collapses when it is absent.
      */
-    $('#vehicleModel').textContent =
-      [s.vehicleMake, s.vehicleDisplayName].filter(Boolean).join(' ') || 'Vehicle';
+    $('#vehicleMake').textContent = s.vehicleMake || '';
+    $('#vehicleModel').textContent = s.vehicleDisplayName || 'Vehicle';
 
     const colour = $('#vehicleColour');
     const swatch = colourSwatch(s.vehicleColor);

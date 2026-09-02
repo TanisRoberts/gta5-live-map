@@ -251,7 +251,19 @@ body.ui-hidden .panel { display: none; }
 
 /* Vehicle */
 .vehicle-card { padding: 10px 15px; min-width: 165px; }
-.vehicle-card b { display: block; font-size: 26px; font-weight: 600; }
+/*
+ * Make above model, on separate lines. Together on one line a long name like
+ * "Albany Cavalcade" set the width of the whole card.
+ */
+.v-make {
+  display: block;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.15;
+  color: var(--muted);
+}
+.v-make:empty { display: none; }
+.vehicle-card b { display: block; font-size: 26px; font-weight: 600; line-height: 1.15; }
 .vehicle-meta {
   display: flex;
   align-items: center;
@@ -261,12 +273,20 @@ body.ui-hidden .panel { display: none; }
   color: var(--muted);
 }
 .v-colour { display: inline-flex; align-items: center; gap: 6px; }
-.v-colour::before {
+/*
+ * The swatch trails the colour name rather than leading it. Leading, a dark
+ * swatch on a dark card reads as nothing at all, and the name then looks
+ * indented by a space that has no visible cause.
+ *
+ * The ring is light rather than dark for the same reason: a black swatch with
+ * a black outline is invisible, which is exactly the case that prompted this.
+ */
+.v-colour::after {
   content: "";
   width: 12px; height: 12px;
   border-radius: 3px;
   background: var(--swatch, #666);
-  outline: 1px solid rgba(0, 0, 0, .5);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .45);
 }
 /*
  * A San Andreas plate, which is a California plate in all but name: off-white

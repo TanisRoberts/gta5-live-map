@@ -28,12 +28,25 @@ namespace GtaLiveMap
         /// <summary>Stop spamming the log if the game API starts failing every tick.</summary>
         private const int MaxLoggedTickErrors = 10;
 
+        /// <summary>
+        /// How often to look up the street and district. These are spatial
+        /// queries and the answer changes far more slowly than the position, so
+        /// there is no reason to pay for them on every tick.
+        /// </summary>
+        private const long PlaceCheckIntervalMs = 250;
+
         private readonly Stopwatch _clock = Stopwatch.StartNew();
 
         private HttpServer _server;
         private long _nextOnlineCheckMs;
         private int _tickErrors;
         private bool _stopped;
+
+        // Cached between place lookups.
+        private long _nextPlaceCheckMs;
+        private string _streetName;
+        private string _crossingStreet;
+        private string _zoneName;
 
         public LiveMapScript()
         {
@@ -240,16 +253,43 @@ namespace GtaLiveMap
             float speed;
             string vehicleName = null;
             string vehicleClass = null;
+            string vehicleColor = null;
+            string licensePlate = null;
 
             if (vehicle != null)
             {
                 speed = vehicle.Speed;
                 vehicleName = vehicle.LocalizedName;
                 vehicleClass = vehicle.ClassType.ToString();
+
+                VehicleModCollection mods = vehicle.Mods;
+                if (mods != null)
+                {
+                    // A resprayed vehicle carries an arbitrary RGB, and the enum
+                    // then reports whatever it happened to land nearest — so say
+                    // "Custom" rather than name a colour that is not true.
+                    vehicleColor = mods.IsPrimaryColorCustom
+                        ? "Custom"
+                        : mods.PrimaryColor.ToString();
+
+                    licensePlate = Clean(mods.LicensePlate);
+                }
             }
             else
             {
                 speed = ped.Speed;
+            }
+
+            // Street and district, refreshed a few times a second rather than
+            // every tick — see PlaceCheckIntervalMs.
+            if (timestampMs >= _nextPlaceCheckMs)
+            {
+                _nextPlaceCheckMs = timestampMs + PlaceCheckIntervalMs;
+
+                string crossing;
+                _streetName = Clean(World.GetStreetName(position, out crossing));
+                _crossingStreet = Clean(crossing);
+                _zoneName = Clean(World.GetZoneLocalizedName(position));
             }
 
             int gameHour = GameClock.Hour;
@@ -264,6 +304,11 @@ namespace GtaLiveMap
             sb.Append(",\"inVehicle\":").Append(Json.Bool(inVehicle));
             sb.Append(",\"vehicleDisplayName\":").Append(Json.String(vehicleName));
             sb.Append(",\"vehicleClass\":").Append(Json.String(vehicleClass));
+            sb.Append(",\"vehicleColor\":").Append(Json.String(vehicleColor));
+            sb.Append(",\"licensePlate\":").Append(Json.String(licensePlate));
+            sb.Append(",\"streetName\":").Append(Json.String(_streetName));
+            sb.Append(",\"crossingStreet\":").Append(Json.String(_crossingStreet));
+            sb.Append(",\"zoneName\":").Append(Json.String(_zoneName));
             sb.Append(",\"wantedLevel\":").Append(Json.Number(wantedLevel));
             sb.Append(",\"gameHour\":").Append(Json.Number(gameHour));
             sb.Append(",\"gameMinute\":").Append(Json.Number(gameMinute));
@@ -271,6 +316,17 @@ namespace GtaLiveMap
             sb.Append('}');
 
             return Encoding.UTF8.GetBytes(sb.ToString());
+        }
+
+        /// <summary>
+        /// Blank game strings become null, so the JSON says "absent" rather than
+        /// "" and the client has one thing to test. Number plates in particular
+        /// come back padded.
+        /// </summary>
+        private static string Clean(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+            return value.Trim();
         }
 
         /// <summary>

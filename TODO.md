@@ -75,6 +75,27 @@ straight-line bearing and distance to a manual marker (item 3b). That gives the
 layout something real to show, and degrades honestly, without pretending to
 route.
 
+**e. Wanted-level vignette.** A blue and red gradient around the screen edge,
+flashing between the two, with the spread and intensity growing as the wanted
+level climbs — nothing at zero, a faint rim at one star, an unmistakable pulse
+at five.
+
+Buildable today: `wantedLevel` already ships in the feed. Pure CSS and a class
+on a full-screen overlay element, `pointer-events: none` so it never eats
+clicks, sitting above the map but below the corner cards.
+
+Two things to get right rather than discover later:
+
+- **Do not obscure the map.** The vignette belongs at the very edge, falling off
+  fast. The middle of the screen is the part being used.
+- **Respect `prefers-reduced-motion`, and add a toggle.** A full-screen red/blue
+  flash is exactly the pattern that causes trouble for photosensitive viewers.
+  Fall back to a static red rim whose opacity tracks the wanted level, which
+  reads just as clearly without the flicker.
+
+Animate opacity and background only, not layout or filters, so it stays off the
+main thread while the marker is moving.
+
 ## 2. Visual design language
 
 The current look is generic dark-blue. Keep it dark, but give it a considered

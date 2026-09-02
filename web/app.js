@@ -574,11 +574,18 @@ let mockHeading = 0;
 let mockWasDead = false;
 const MOCK_DEATH_PERIOD_MS = 45000;   // how often the mock dies
 
-/* HUD colours as GET_HUD_COLOUR reports them, so the mock matches the game. */
+/*
+ * HUD colours as GET_HUD_COLOUR actually reports them, so the mock agrees with
+ * the plugin. Michael and Franklin are observed from the live feed; Trevor has
+ * not been seen yet and is the one value here still to be confirmed.
+ *
+ * Guessing these was already wrong once: Michael was assumed to be a pale
+ * #9bc3e8 and is really a much stronger #65b4d4.
+ */
 const MOCK_CHARACTERS = [
-  { name: "Michael",  colour: "#9bc3e8" },
+  { name: "Michael",  colour: "#65b4d4" },
   { name: "Franklin", colour: "#abedab" },
-  { name: "Trevor",   colour: "#f0b48f" }
+  { name: "Trevor",   colour: "#f0b48f" }   // unconfirmed
 ];
 
 function mockPos(theta) {
@@ -1844,6 +1851,14 @@ function updateAvatar(s) {
   el.classList.toggle('has-portrait', hasArt);
   if (hasArt) el.style.setProperty('--char-portrait', 'url("portraits/' + portraitArt[name] + '")');
   else el.style.removeProperty('--char-portrait');
+
+  /*
+   * The player arrow takes the same colour, set on the root so the marker
+   * picks it up wherever Leaflet has parented it. Falls back to the app accent
+   * for a character the game does not name.
+   */
+  if (s.characterColor) document.documentElement.style.setProperty('--player-colour', s.characterColor);
+  else document.documentElement.style.removeProperty('--player-colour');
 
   $('#avatarInitial').textContent = known ? name.charAt(0) : '?';
   el.title = known ? name : 'Character';

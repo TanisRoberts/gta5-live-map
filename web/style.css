@@ -43,7 +43,19 @@ html, body {
   overscroll-behavior: none;
 }
 
-#map { position: absolute; inset: 0; background: var(--bg); }
+/*
+ * z-index: 0 looks redundant but is load-bearing. Without it the map is
+ * `position: absolute; z-index: auto`, which creates NO stacking context, so
+ * Leaflet's internal panes (tile 200, overlay 400, marker 600, popup 700)
+ * escape into the root context and compete with our own layers as siblings.
+ * The vignette at 300 then landed between the tile and overlay panes, and the
+ * full-screen trail canvas painted straight over it — it rendered correctly
+ * and was simply buried.
+ *
+ * Giving the map a stacking context confines those panes inside it, so the
+ * whole map is one layer at 0 and our layering means what it says.
+ */
+#map { position: absolute; inset: 0; z-index: 0; background: var(--bg); }
 
 .leaflet-container { background: var(--bg); outline: none; }
 /* The corner cards replace Leaflet's own chrome. */
@@ -338,13 +350,13 @@ body.ui-hidden .panel { display: none; }
  */
 .rpm-bar {
   position: relative;
-  height: 7px;
+  height: 12px;
   margin-top: 7px;
   border-radius: 4px;
   overflow: hidden;
   background:
     repeating-linear-gradient(90deg,
-      rgba(255, 255, 255, .22) 0 1px, transparent 1px 5px),
+      rgba(255, 255, 255, .13) 0 1px, transparent 1px 7px),
     rgba(255, 255, 255, .07);
 }
 .rpm-fill {
@@ -369,9 +381,31 @@ body.ui-hidden .panel { display: none; }
 }
 
 /* Control stack */
-.controls { display: flex; flex-direction: column; gap: 6px; }
-/* Leave room for the hide-UI button that sits below, outside #hud. */
-.bottom-right { padding-bottom: 46px; }
+/*
+ * Clearance for the hide-UI button, which sits below this stack and outside
+ * #hud. It belongs on the stack alone: padding the whole corner lifted the
+ * speedometer too, leaving it hovering while every other card sat on the
+ * bottom line.
+ */
+.controls { margin-bottom: 46px; }
+
+/* Warning lights, as a cluster shows them: always present, lit by state, so
+   the row never reflows. */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.status-row svg {
+  width: 18px; height: 18px;
+  color: var(--muted);
+  opacity: .35;
+  transition: color .15s linear, opacity .15s linear;
+}
+.status-row svg.on      { color: var(--good); opacity: 1; }
+.status-row svg.beam    { color: var(--accent); opacity: 1; }
+.status-row svg.warn    { color: var(--bad); opacity: 1; }
 
 /* ------------------------------------------------------------------ */
 /* Settings panel                                                      */

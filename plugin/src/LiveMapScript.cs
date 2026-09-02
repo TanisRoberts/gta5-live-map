@@ -258,6 +258,11 @@ namespace GtaLiveMap
             string vehicleClass = null;
             string vehicleColor = null;
             string licensePlate = null;
+            string vehicleMake = null;
+            bool isStolen = false;
+            bool engineRunning = false;
+            bool lightsOn = false;
+            bool highBeams = false;
 
             if (vehicle != null)
             {
@@ -275,6 +280,20 @@ namespace GtaLiveMap
 
                 vehicleName = vehicle.LocalizedName;
                 vehicleClass = vehicle.ClassType.ToString();
+
+                // Manufacturer. The native returns a label key ("VAPID"), so
+                // it needs the text table to become "Vapid" -- and it answers
+                // for models it does not know with a placeholder rather than
+                // an empty string, which Clean() alone would happily pass on.
+                vehicleMake = Clean(Game.GetLocalizedString(
+                    Function.Call<string>(Hash.GET_MAKE_NAME_FROM_VEHICLE_MODEL,
+                                          vehicle.Model.Hash)));
+                if (LooksUnnamed(vehicleMake)) vehicleMake = null;
+
+                isStolen = vehicle.IsStolen;
+                engineRunning = vehicle.IsEngineRunning;
+                lightsOn = vehicle.AreLightsOn;
+                highBeams = vehicle.AreHighBeamsOn;
 
                 VehicleModCollection mods = vehicle.Mods;
                 if (mods != null)
@@ -323,6 +342,11 @@ namespace GtaLiveMap
             sb.Append(",\"vehicleClass\":").Append(Json.String(vehicleClass));
             sb.Append(",\"vehicleColor\":").Append(Json.String(vehicleColor));
             sb.Append(",\"licensePlate\":").Append(Json.String(licensePlate));
+            sb.Append(",\"vehicleMake\":").Append(Json.String(vehicleMake));
+            sb.Append(",\"isStolen\":").Append(Json.Bool(isStolen));
+            sb.Append(",\"engineRunning\":").Append(Json.Bool(engineRunning));
+            sb.Append(",\"lightsOn\":").Append(Json.Bool(lightsOn));
+            sb.Append(",\"highBeams\":").Append(Json.Bool(highBeams));
             sb.Append(",\"streetName\":").Append(Json.String(_streetName));
             sb.Append(",\"crossingStreet\":").Append(Json.String(_crossingStreet));
             sb.Append(",\"zoneName\":").Append(Json.String(_zoneName));
@@ -344,6 +368,19 @@ namespace GtaLiveMap
         {
             if (string.IsNullOrWhiteSpace(value)) return null;
             return value.Trim();
+        }
+
+        /// <summary>
+        /// The make native answers for a model it does not know with a
+        /// placeholder rather than with nothing, and the text table answers for
+        /// a key it does not hold with "NULL". Either would otherwise reach the
+        /// client looking like a manufacturer's name.
+        /// </summary>
+        private static bool LooksUnnamed(string value)
+        {
+            if (value == null) return true;
+            return value.Equals("NULL", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("CARNOTFOUND", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>

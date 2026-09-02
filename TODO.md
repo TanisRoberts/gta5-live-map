@@ -70,12 +70,15 @@ everything needed.
 
 | Field | Source |
 |---|---|
+| Make | `vehicleMake` — `GET_MAKE_NAME_FROM_VEHICLE_MODEL` through the text table |
 | Model | `vehicleDisplayName` |
 | Colour | `vehicleColor` — an enum name like `MetallicWhite`, or `Custom` |
 | Registration | `licensePlate` |
 
-"Make" is not cleanly separable from model in the API and has been dropped:
-model, colour and plate carry the Uber-card feel on their own.
+Make **is** available, contrary to what this item said before: the native
+returns a label key ("VAPID") which the text table resolves to "Vapid", giving
+"Mammoth Patriot" rather than a bare "Patriot". It does not answer for every
+model, so the model alone stays the fallback.
 
 **c. Top right — cog button and character avatar.** Settings content already
 exists; it is the current panel behind a cog.

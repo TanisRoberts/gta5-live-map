@@ -107,6 +107,13 @@
         <div class="rpm-fill" id="rpmFill"></div>
         <div class="rpm-red"></div>
       </div>
+      <!-- Warning lights, as a cluster shows them. Always present so the row
+           never reflows; state is carried entirely by class. -->
+      <div class="status-row" id="statusRow" hidden>
+        <svg id="stEngine" viewBox="0 0 24 24" role="img"><use href="#i-engine"/></svg>
+        <svg id="stLights" viewBox="0 0 24 24" role="img"><use href="#i-lights"/></svg>
+        <svg id="stStolen" viewBox="0 0 24 24" role="img"><use href="#i-key"/></svg>
+      </div>
     </div>
 
     <div class="controls">
@@ -270,6 +277,9 @@
     <g id="i-eye-off"><path d="M3.3 2 2 3.3l3.2 3.2C3.5 7.9 2.4 9.7 2 11c1 3 5 7 10 7 1.7 0 3.3-.5 4.7-1.2l3 3 1.3-1.3Zm5.4 8 5.3 5.3A4.5 4.5 0 0 1 8.7 10ZM12 5c-1 0-1.9.2-2.8.4l1.7 1.7A4.5 4.5 0 0 1 16.5 12c0 .4 0 .8-.2 1.1l2.7 2.7c1.4-1.2 2.4-2.7 3-3.8-1-3-5-7-10-7Z"/></g>
     <g id="i-close"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7l1.4-1.4L10.6 10.6l6.3-6.3Z"/></g>
     <g id="i-turn"><path d="M11 20V9.8L7.4 13.4 6 12l6-6 6 6-1.4 1.4L13 9.8V20Z"/></g>
+    <g id="i-engine"><path d="M6 8h2V6h5v2h2.5L18 6h2v3h2v5h-2v3h-2l-2.5-2H13v2H8v-2H6l-2 2v-3H3v-5h1V6Z"/></g>
+    <g id="i-lights"><path d="M3 5h4.5a7 7 0 0 1 0 14H3Z"/><path d="M14.5 8h5m-5 4h6m-6 4h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
+    <g id="i-key"><path d="M15 3a6 6 0 0 0-5.6 8.2L3 17.6V21h3.4l1-1v-1.8h1.8l1.5-1.5v-1.8h1.8l1.1-1.1A6 6 0 1 0 15 3Zm1.8 5.3a1.6 1.6 0 1 1 0-3.2 1.6 1.6 0 0 1 0 3.2Z"/></g>
   </defs>
 </svg>
 

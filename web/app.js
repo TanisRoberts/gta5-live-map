@@ -456,12 +456,12 @@ async function pollOnce() {
  * trail category, and carry the colour/plate/street fields the cards will need.
  */
 const MOCK_VEHICLES = [
-  { name: 'Sultan',      cls: 'Sports',      colour: 'MetallicBlue',   plate: '46EEK572' },
-  { name: 'Buffalo STX', cls: 'Sedans',      colour: 'MetallicBlack',  plate: '11ABC222' },
-  null,                                                                 // on foot
-  { name: 'Sanchez',     cls: 'Motorcycles', colour: 'MatteRed',       plate: '99XYZ001' },
-  { name: 'Dinghy',      cls: 'Boats',       colour: 'MetallicWhite',  plate: null },
-  { name: 'Buzzard',     cls: 'Helicopters', colour: 'MetallicGreen',  plate: null },
+  { name: 'Sultan',      make: 'Karin',    cls: 'Sports',      colour: 'MetallicBlue',   plate: '46EEK572', stolen: false },
+  { name: 'Buffalo STX', make: 'Bravado',  cls: 'Sedans',      colour: 'MetallicBlack',  plate: '11ABC222', stolen: true  },
+  null,                                                                                   // on foot
+  { name: 'Sanchez',     make: 'Maibatsu', cls: 'Motorcycles', colour: 'MatteRed',       plate: '99XYZ001', stolen: false },
+  { name: 'Dinghy',      make: 'Speedophile', cls: 'Boats',    colour: 'MetallicWhite',  plate: null,       stolen: false },
+  { name: 'Buzzard',     make: 'Nagasaki', cls: 'Helicopters', colour: 'MetallicGreen',  plate: null,       stolen: true  },
   null
 ];
 
@@ -536,6 +536,13 @@ function mockTick() {
     vehicleClass:       veh ? veh.cls : null,
     vehicleColor:       veh ? veh.colour : null,
     licensePlate:       veh ? veh.plate : null,
+    vehicleMake:        veh ? veh.make : null,
+    isStolen:           veh ? veh.stolen : false,
+    // Engine and lights cycle so the tell-tales can be seen changing with the
+    // game shut, rather than sitting in one state forever.
+    engineRunning:      !!veh,
+    lightsOn:           !!veh && Math.floor(t / 7000) % 3 > 0,
+    highBeams:          !!veh && Math.floor(t / 7000) % 3 === 2,
     streetName:     place.street,
     crossingStreet: place.crossing,
     zoneName:       place.zone,
@@ -945,38 +952,78 @@ function modeZoom(inVehicle) {
   return Number.isFinite(z) ? z : (inVehicle ? ZOOM_VEHICLE : ZOOM_FOOT);
 }
 
+/*
+ * Light one tell-tale. The class carries the colour (see .status-row in the
+ * stylesheet); the label carries the same state as text, since a colour change
+ * on its own says nothing to a screen reader.
+ */
+function setTellTale(el, state, label) {
+  el.classList.remove('on', 'beam', 'warn');
+  if (state) el.classList.add(state);
+  el.setAttribute('aria-label', label);
+}
+
 function updateHud() {
   updateFeedStatus();
   // rAF is paused while the tab is hidden, so advance the state here too.
   const s = sampleCurrent();
   if (!s) return;
 
-  // Speed
-  const kmh = s.speed * 3.6;
-  $('#speedValue').textContent = Math.round(settings.units === 'kmh' ? kmh : kmh * 0.621371);
-  $('#speedUnit').textContent = settings.units === 'kmh' ? 'km/h' : 'mph';
+  /*
+   * Speed, revs and the tell-tales are all vehicle instruments, so the whole
+   * cluster goes away on foot rather than reading 3 mph in top gear with a
+   * dead tacho beneath it.
+   *
+   * This guards rather than returns: street, district and wanted level all
+   * still apply on foot, and they are updated further down.
+   */
+  $('#speedo').hidden = !s.inVehicle;
 
-  // Tacho. RPM arrives normalised 0..1, so it needs no scaling — but it is
-  // only meaningful in a vehicle, and idles around 0.2 rather than 0.
-  const bar = $('#rpmBar');
-  const hasRpm = s.inVehicle && Number.isFinite(s.rpm);
-  bar.hidden = !hasRpm;
-  if (hasRpm) {
-    const frac = Math.max(0, Math.min(1, s.rpm));
-    $('#rpmFill').style.transform = 'scaleX(' + frac.toFixed(3) + ')';
-    $('#rpmFill').classList.toggle('over', frac >= RPM_REDLINE);
+  if (s.inVehicle) {
+    const kmh = s.speed * 3.6;
+    $('#speedValue').textContent = Math.round(settings.units === 'kmh' ? kmh : kmh * 0.621371);
+    $('#speedUnit').textContent = settings.units === 'kmh' ? 'km/h' : 'mph';
+
+    // Tacho. RPM arrives normalised 0..1, so it needs no scaling.
+    const hasRpm = Number.isFinite(s.rpm);
+    $('#rpmBar').hidden = !hasRpm;
+    if (hasRpm) {
+      const frac = Math.max(0, Math.min(1, s.rpm));
+      $('#rpmFill').style.transform = 'scaleX(' + frac.toFixed(3) + ')';
+      $('#rpmFill').classList.toggle('over', frac >= RPM_REDLINE);
+    }
+
+    /*
+     * Tell-tales. Each is always in the DOM and lit by class, so the row keeps
+     * its width and nothing jumps as states change. Full beam takes precedence
+     * over side lights: it is the stronger signal, and the one worth being
+     * reminded of.
+     */
+    $('#statusRow').hidden = false;
+    setTellTale($('#stEngine'), s.engineRunning ? 'on' : '',
+                s.engineRunning ? 'Engine running' : 'Engine off');
+    setTellTale($('#stLights'), s.highBeams ? 'beam' : s.lightsOn ? 'on' : '',
+                s.highBeams ? 'Full beam' : s.lightsOn ? 'Lights on' : 'Lights off');
+    setTellTale($('#stStolen'), s.isStolen ? 'warn' : '',
+                s.isStolen ? 'Stolen vehicle' : 'Not flagged stolen');
+
+    const gear = $('#gear');
+    const showGear = Number.isFinite(s.gear) && s.gear > 0;
+    gear.hidden = !showGear;
+    if (showGear) gear.textContent = s.gear;
   }
-
-  const gear = $('#gear');
-  const showGear = s.inVehicle && Number.isFinite(s.gear) && s.gear > 0;
-  gear.hidden = !showGear;
-  if (showGear) gear.textContent = s.gear;
 
   // Vehicle card — absent entirely on foot, rather than showing empty fields.
   const vehicleCard = $('#vehicleCard');
   if (s.inVehicle) {
     vehicleCard.hidden = false;
-    $('#vehicleModel').textContent = s.vehicleDisplayName || 'Vehicle';
+    /*
+     * "Vapid Speedo" rather than "Speedo": the card looked bare with one short
+     * word on it. GET_MAKE_NAME_FROM_VEHICLE_MODEL supplies the make, but it
+     * does not answer for every model, so the model alone stays the fallback.
+     */
+    $('#vehicleModel').textContent =
+      [s.vehicleMake, s.vehicleDisplayName].filter(Boolean).join(' ') || 'Vehicle';
 
     const colour = $('#vehicleColour');
     const swatch = colourSwatch(s.vehicleColor);

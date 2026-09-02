@@ -148,24 +148,28 @@ const TRAIL_CASING_EXTRA = 4;
  * entirely desaturated greys and tans — anything muted disappears into it.
  */
 /*
- * Hues chosen to sit apart from each other, not just to look nice. The
- * closest pair is red and yellow at 35 degrees, which the eye separates
- * easily; everything else is 44 degrees or more.
+ * Trail colours.
  *
- * Blue still lands near Michael and yellow near Trevor, both within about 12
- * degrees. That is tolerable because the trail is fully saturated where the HUD
- * colours are not, and because the player arrow carries a white glow that
- * separates it from any line it happens to be sitting on.
+ * Yellow is deliberately absent. The game's own satnav draws its route in
+ * roughly #ffd23f, and a trail in the same colour reads as a route you are
+ * supposed to follow. It is reserved for when we draw real navigation
+ * ourselves (TODO 3c) and should not be spent on a vehicle category.
  *
- * The jade foot colour is 44 degrees off Franklin, where the green it replaced
- * was 11 -- so the one character clash that was avoidable is now avoided.
+ * Hues are checked rather than eyeballed. The closest chromatic pair is
+ * magenta and red at 35 degrees; everything else is 44 or more. On foot is
+ * near-neutral by design, so it sits outside that contest entirely.
+ *
+ * That grey is brighter than it first looks for a reason: the map roads are
+ * about 198 luminance, so a mid grey would have read as road with a dark
+ * outline rather than as a colour. This sits about 38 above the roads and
+ * far above the terrain, so it reads on both.
  */
 const TRAIL_COLOURS = {
-  car:   '#ffd23f',   // yellow
-  foot:  '#0f9d76',   // jade
-  boat:  '#2f9dff',   // blue
-  air:   '#b57bff',   // purple
-  bike:  '#ff2a2a',   // red
+  car:   '#2f9dff',   // blue
+  foot:  '#e9eef4',   // near-white grey
+  bike:  '#0f9d76',   // jade
+  boat:  '#b57bff',   // purple
+  air:   '#ff2a2a',   // red
   other: '#ff4de0'    // magenta
 };
 

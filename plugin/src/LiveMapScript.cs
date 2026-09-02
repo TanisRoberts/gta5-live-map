@@ -35,6 +35,14 @@ namespace GtaLiveMap
         /// </summary>
         private const long PlaceCheckIntervalMs = 250;
 
+        /// <summary>
+        /// Burst tyres mean walking every wheel on the vehicle. That is far
+        /// too much to pay 20 times a second for a value that changes on the
+        /// scale of a gunfight, so it rides the same kind of throttle as the
+        /// street lookup.
+        /// </summary>
+        private const long DamageCheckIntervalMs = 250;
+
         private readonly Stopwatch _clock = Stopwatch.StartNew();
 
         private HttpServer _server;
@@ -47,6 +55,11 @@ namespace GtaLiveMap
         private string _streetName;
         private string _crossingStreet;
         private string _zoneName;
+
+        // Cached between damage lookups.
+        private long _nextDamageCheckMs;
+        private int _tyresBurst;
+        private int _tyreCount;
 
         public LiveMapScript()
         {
@@ -247,20 +260,121 @@ namespace GtaLiveMap
             float heading = ped.Heading;
             int wantedLevel = player.Wanted.WantedLevel;
 
+            /*
+             * Death and arrest, so the client can break the trail rather than
+             * drawing a straight line from where you died to the hospital.
+             *
+             * Both are read here, at the moment they happen, because by the
+             * time the position jumps the player is already alive again and
+             * standing outside Pillbox with nothing left to say what occurred.
+             */
+            bool isDead = ped.IsDead || player.IsDead;
+            bool isArrested = ped.IsCuffed
+                || Function.Call<bool>(Hash.IS_PLAYER_BEING_ARRESTED, player);
+
             bool inVehicle = ped.IsInVehicle();
             Vehicle vehicle = inVehicle ? ped.CurrentVehicle : null;
 
             float speed;
+            float rpm = 0f;
+            float fuel = -1f;
+            int gear = 0;
             string vehicleName = null;
             string vehicleClass = null;
             string vehicleColor = null;
             string licensePlate = null;
+            string plateStyle = null;
+            string vehicleMake = null;
+            float engineHealth = 0f;
+            bool onFire = false;
+            int tyresBurst = 0;
+            int tyreCount = 0;
+            bool engineRunning = false;
+            bool lightsOn = false;
+            bool highBeams = false;
+            bool headlightsGone = false;
+            bool headlightL = false;
+            bool headlightR = false;
 
             if (vehicle != null)
             {
                 speed = vehicle.Speed;
+
+                // Engine revs. Already normalised 0..1 by the game -- there is
+                // no readable redline or maximum anywhere in the API, so the
+                // client picks its own (0.85) for the red zone.
+                rpm = vehicle.CurrentRPM;
+
+                // Petrol remaining, so we can find out whether it actually
+                // drains in story mode. -1 means "not in a vehicle".
+                fuel = vehicle.FuelLevel;
+                gear = vehicle.CurrentGear;
+
                 vehicleName = vehicle.LocalizedName;
                 vehicleClass = vehicle.ClassType.ToString();
+
+                // Manufacturer. The native returns a label key ("VAPID"), so
+                // it needs the text table to become "Vapid" -- and it answers
+                // for models it does not know with a placeholder rather than
+                // an empty string, which Clean() alone would happily pass on.
+                vehicleMake = Clean(Game.GetLocalizedString(
+                    Function.Call<string>(Hash.GET_MAKE_NAME_FROM_VEHICLE_MODEL,
+                                          vehicle.Model.Hash)));
+                if (LooksUnnamed(vehicleMake)) vehicleMake = null;
+
+                // Raw, so the client owns the thresholds: nothing here knows
+                // what counts as "damaged" better than the thing drawing it,
+                // and tuning it should not need a rebuild and a reload.
+                engineHealth = vehicle.EngineHealth;
+                onFire = vehicle.IsOnFire;
+                engineRunning = vehicle.IsEngineRunning;
+                lightsOn = vehicle.AreLightsOn;
+                highBeams = vehicle.AreHighBeamsOn;
+
+                /*
+                 * Headlights, per side as well as together.
+                 *
+                 * The "both" native is carried alongside the two individual
+                 * ones deliberately: it reported damage on an undamaged car
+                 * during QA, and until the three are seen to agree it is not
+                 * trustworthy on its own. Per-side is also better information,
+                 * since one unit out is a caution and two is a warning.
+                 */
+                headlightL = Function.Call<bool>(
+                    Hash.GET_IS_LEFT_VEHICLE_HEADLIGHT_DAMAGED, vehicle);
+                headlightR = Function.Call<bool>(
+                    Hash.GET_IS_RIGHT_VEHICLE_HEADLIGHT_DAMAGED, vehicle);
+                headlightsGone = Function.Call<bool>(
+                    Hash.GET_BOTH_VEHICLE_HEADLIGHTS_DAMAGED, vehicle);
+
+                // Burst tyres, on a throttle -- see DamageCheckIntervalMs.
+                if (timestampMs >= _nextDamageCheckMs)
+                {
+                    _nextDamageCheckMs = timestampMs + DamageCheckIntervalMs;
+                    _tyresBurst = 0;
+                    _tyreCount = 0;
+
+                    VehicleWheelCollection wheels = vehicle.Wheels;
+                    if (wheels != null)
+                    {
+                        VehicleWheel[] all = wheels.GetAllWheels();
+                        if (all != null)
+                        {
+                            _tyreCount = all.Length;
+                            for (int i = 0; i < all.Length; i++)
+                            {
+                                VehicleWheel w = all[i];
+                                if (w == null) continue;
+                                // Punctured counts too: a flat is a flat well
+                                // before the tyre leaves the rim.
+                                if (w.IsBursted || w.IsPunctured) _tyresBurst++;
+                            }
+                        }
+                    }
+                }
+
+                tyresBurst = _tyresBurst;
+                tyreCount = _tyreCount;
 
                 VehicleModCollection mods = vehicle.Mods;
                 if (mods != null)
@@ -273,6 +387,13 @@ namespace GtaLiveMap
                         : mods.PrimaryColor.ToString();
 
                     licensePlate = Clean(mods.LicensePlate);
+
+                    // Which plate design the vehicle is actually wearing, so
+                    // the client can draw that one rather than assume the
+                    // default. Rockstar's own names carry the colours for the
+                    // six base styles (BlueOnWhite1..3, YellowOnBlue,
+                    // YellowOnBlack, NorthYankton); the rest are branded.
+                    plateStyle = mods.LicensePlateStyle.ToString();
                 }
             }
             else
@@ -301,15 +422,32 @@ namespace GtaLiveMap
             sb.Append(",\"z\":").Append(Json.Number(position.Z));
             sb.Append(",\"heading\":").Append(Json.Number(heading));
             sb.Append(",\"speed\":").Append(Json.Number(speed));
+            sb.Append(",\"rpm\":").Append(Json.Number(rpm));
+            sb.Append(",\"fuel\":").Append(Json.Number(fuel));
+            sb.Append(",\"gear\":").Append(Json.Number(gear));
             sb.Append(",\"inVehicle\":").Append(Json.Bool(inVehicle));
             sb.Append(",\"vehicleDisplayName\":").Append(Json.String(vehicleName));
             sb.Append(",\"vehicleClass\":").Append(Json.String(vehicleClass));
             sb.Append(",\"vehicleColor\":").Append(Json.String(vehicleColor));
             sb.Append(",\"licensePlate\":").Append(Json.String(licensePlate));
+            sb.Append(",\"plateStyle\":").Append(Json.String(plateStyle));
+            sb.Append(",\"vehicleMake\":").Append(Json.String(vehicleMake));
+            sb.Append(",\"engineHealth\":").Append(Json.Number(engineHealth));
+            sb.Append(",\"onFire\":").Append(Json.Bool(onFire));
+            sb.Append(",\"tyresBurst\":").Append(Json.Number(tyresBurst));
+            sb.Append(",\"tyreCount\":").Append(Json.Number(tyreCount));
+            sb.Append(",\"engineRunning\":").Append(Json.Bool(engineRunning));
+            sb.Append(",\"lightsOn\":").Append(Json.Bool(lightsOn));
+            sb.Append(",\"highBeams\":").Append(Json.Bool(highBeams));
+            sb.Append(",\"headlightsGone\":").Append(Json.Bool(headlightsGone));
+            sb.Append(",\"headlightL\":").Append(Json.Bool(headlightL));
+            sb.Append(",\"headlightR\":").Append(Json.Bool(headlightR));
             sb.Append(",\"streetName\":").Append(Json.String(_streetName));
             sb.Append(",\"crossingStreet\":").Append(Json.String(_crossingStreet));
             sb.Append(",\"zoneName\":").Append(Json.String(_zoneName));
             sb.Append(",\"wantedLevel\":").Append(Json.Number(wantedLevel));
+            sb.Append(",\"isDead\":").Append(Json.Bool(isDead));
+            sb.Append(",\"isArrested\":").Append(Json.Bool(isArrested));
             sb.Append(",\"gameHour\":").Append(Json.Number(gameHour));
             sb.Append(",\"gameMinute\":").Append(Json.Number(gameMinute));
             sb.Append(",\"t\":").Append(Json.Number(timestampMs));
@@ -327,6 +465,19 @@ namespace GtaLiveMap
         {
             if (string.IsNullOrWhiteSpace(value)) return null;
             return value.Trim();
+        }
+
+        /// <summary>
+        /// The make native answers for a model it does not know with a
+        /// placeholder rather than with nothing, and the text table answers for
+        /// a key it does not hold with "NULL". Either would otherwise reach the
+        /// client looking like a manufacturer's name.
+        /// </summary>
+        private static bool LooksUnnamed(string value)
+        {
+            if (value == null) return true;
+            return value.Equals("NULL", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("CARNOTFOUND", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>

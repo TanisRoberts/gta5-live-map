@@ -11,68 +11,93 @@ Replace the single control panel with a Google-Maps-navigation / Uber hybrid:
 four corner cards floating over a full-bleed map, no persistent sidebar.
 
 ```
-┌─────────────────────────┬─────────────────────────┐
-│  NEXT DIRECTION         │        SETTINGS ▾       │
-│  (top left)             │   + character avatar    │
-│                         │        (top right)      │
-│                                                   │
-│                  [ M A P ]                        │
-│                                                   │
-│  VEHICLE CARD           │    MAP CONTROLS         │
-│  make / model /         │    + SPEEDOMETER        │
-│  colour / plate         │      (bottom right)     │
-│  (bottom left)          │                         │
-└─────────────────────────┴─────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│ ┌────────┐                                    ⚙  ( ◕ )    │
+│ │DISTRICT│                                  cog   avatar  │
+│ └────────┘                                                │
+│                                                           │
+│                        [ M A P ]                          │
+│                                                           │
+│ ┌──────────────┐                                   ┌───┐  │
+│ │ VEHICLE      │                                   │ ⌖ │  │
+│ │ model        │        ┌─────────────────┐  ┌──┐  │ ~ │  │
+│ │ colour plate │        │ ↰ NEXT DIRECTION│  │65│  │ ⦿ │  │
+│ └──────────────┘        │   Street Name   │  │mph│ │ ⛶ │  │
+│                         │   district      │  └──┘  ├───┤  │
+│                         └─────────────────┘        │ 👁 │  │
+│                                                    └───┘  │
+└───────────────────────────────────────────────────────────┘
 ```
 
-This supersedes the old "move Follow player onto the map" item — those buttons
-are now part of the bottom-right cluster.
+- **Bottom centre** — a thin card: next direction and current street, with the
+  district small underneath. This is where a satnav puts its instruction, so it
+  is the one card that earns centre stage.
+- **Top left** — a tiny card showing the current district.
+- **Top right** — a small cog icon button and the player avatar in a circle.
+  Nothing else; settings live behind the cog.
+- **Bottom right** — the map control stack, with the speedometer sitting just to
+  its left.
+
+Map controls, top to bottom: **recentre**, **toggle trail**, **toggle follow
+player**, **fullscreen**, then **hide UI** separated at the bottom.
+
+**Hide UI** is an eye icon that hides every other card and control — and stays
+visible itself, or there is no way back.
+
+This supersedes the old "move Follow player onto the map" item.
+
+**Note:** the district appears both under the street on the bottom-centre card
+and on its own top-left card. That is as specified, but it is the same value in
+two places — worth revisiting once it can be seen in situ.
 
 ### Build order, easiest first
 
 The four corners are **not** equally feasible. Ordered by what actually blocks
 them:
 
-**a. Bottom right — map controls + speedometer.** Buildable today, nothing new
-needed. Follow and Recentre become icon buttons (a `L.Control` in the
-`bottomright` corner, not a floating div, so it moves with the map chrome).
+**a. Bottom right — map controls + speedometer.** Buildable today. Recentre,
+toggle trail, toggle follow, fullscreen, and hide-UI, as a `L.Control` in the
+`bottomright` corner rather than a floating div so it moves with the map chrome.
 Speed is already in the feed.
 
 Carry over from the old item: follow mode does nothing when zoomed out far
 enough to see the whole map, because `maxBounds` leaves nowhere to pan. Harmless
-as a checkbox, but a lit-up GPS button that does nothing reads as broken. Either
-disable it at that zoom or have it zoom to a sensible follow level.
+as a checkbox, but a lit-up GPS button that does nothing reads as broken — the
+button should zoom to the follow level rather than sit there inert.
 
-**b. Bottom left — vehicle card.** Needs three new plugin fields. `vehicleClass`
-already ships; make/model, colour and plate do not:
+**b. Bottom left — vehicle card.** Buildable today; the plugin now sends
+everything needed.
 
-| Field | Where it comes from |
+| Field | Source |
 |---|---|
-| Model | `Vehicle.LocalizedName` — already sent as `vehicleDisplayName` |
-| Make | Not cleanly separable from model in the API; may need a lookup table, or just show the model |
-| Colour | `Vehicle.Mods.PrimaryColor` (an enum — needs mapping to a display name and a swatch) |
-| Registration | `Vehicle.Mods.LicensePlate` |
+| Make | `vehicleMake` — `GET_MAKE_NAME_FROM_VEHICLE_MODEL` through the text table |
+| Model | `vehicleDisplayName` |
+| Colour | `vehicleColor` — an enum name like `MetallicWhite`, or `Custom` |
+| Registration | `licensePlate` |
 
-Small, contained plugin work. Do it in one pass with item 4's needs.
+Make **is** available, contrary to what this item said before: the native
+returns a label key ("VAPID") which the text table resolves to "Vapid", giving
+"Mammoth Patriot" rather than a bare "Patriot". It does not answer for every
+model, so the model alone stays the fallback.
 
-**c. Top right — settings + character avatar.** Detecting *which* character is
-active is easy (compare the player ped's model hash against Michael / Franklin /
-Trevor). Two catches:
+**c. Top right — cog button and character avatar.** Settings content already
+exists; it is the current panel behind a cog.
+
+The avatar is **the one remaining piece of plugin work in the whole backlog** —
+the active character has to be identified from the player ped's model hash and
+added to the feed. Small, but it means one more build-and-Insert cycle.
 
 - **The artwork is Rockstar's.** Character portraits cannot be committed here,
-  same rule as the map image. Either generate a neutral avatar (initial, or a
-  silhouette in the character's signature colour), or treat portraits as a
-  user-supplied local asset like the map.
-- Settings content largely already exists — it is the current panel, restyled
-  into a dropdown.
+  same rule as the map image. Either generate a neutral avatar (an initial, or a
+  silhouette in the character's colour), or treat portraits as a user-supplied
+  local asset like the map itself.
 
-**d. Top left — next direction.** **Blocked.** This is turn-by-turn navigation,
-which needs routing (item 3c), which needs road geometry the client does not
-have. Do not design around this arriving soon.
+**d. Bottom centre — next direction and street.** The street half is buildable
+today: `streetName`, `crossingStreet` and `zoneName` all ship now.
 
-Worth deciding early: build the card as a placeholder that renders a
-straight-line bearing and distance to a manual marker (item 3b). That gives the
-layout something real to show, and degrades honestly, without pretending to
+The **next direction** half is still blocked on routing (item 3c). Build the
+card with the street and district working, and leave room for the instruction —
+better an honest card that shows where you are than a fake one pretending to
 route.
 
 **e. Wanted-level vignette.** A blue and red gradient around the screen edge,
@@ -206,9 +231,57 @@ most makes it feel like a satnav.
 It only gives the street at a point, not road geometry, so it does **not** on its
 own unlock routing (3c) — but it is the natural first step toward it.
 
+## 9. Vehicle damage indicator
+
+A BeamNG-style damage readout: a top-down schematic of the vehicle with each
+part tinted by its condition, so a glance says "front left tyre gone, offside
+headlight out" rather than just "damaged".
+
+Everything needed is already readable on the script thread — this is a
+plugin-side data item first, and a drawing job second.
+
+| Part | Source |
+|---|---|
+| Tyres, per wheel | `Vehicle.Wheels` (`VehicleWheelCollection`) |
+| Doors, per door | `Vehicle.Doors` (`VehicleDoorCollection`) |
+| Windows, per window | `Vehicle.Windows` (`VehicleWindowCollection`) |
+| Headlights | `IsLeftHeadLightBroken`, `IsRightHeadLightBroken` |
+| Bumpers | `IsFrontBumperBrokenOff`, `IsRearBumperBrokenOff` |
+| Overall body | `BodyHealth`, `HasDamageDecals` |
+| Engine | `EngineHealth`, `IsOnFire` |
+| Petrol tank | `PetrolTankHealth` |
+| Rotors (helicopters) | `HeliMainRotorHealth`, `HeliTailRotorHealth` |
+
+**`fuel` already ships in the feed, and belongs here rather than in a gauge of
+its own.** It was added to answer whether petrol drains in story mode. Measured
+over 72 samples across 6 minutes of driving — 52 of them above 5 m/s, peaking at
+226 km/h — `FuelLevel` never moved off 65. Vanilla GTA V does not consume fuel;
+the level only falls when the tank is holed, which makes it a **damage** signal,
+not a consumption one. Read it alongside `PetrolTankHealth`: a falling level is
+a leak, and a leak is worth showing on this schematic.
+
+Note it is a tank quantity, not a fraction — a percentage needs
+`FuelLevel / PetrolTankVolume`.
+
+Three things to settle rather than discover later:
+
+- **Do not read this every tick.** The per-part collections mean walking wheels,
+  doors and windows on the script thread, at 20 Hz, forever. Damage changes far
+  more slowly than position — throttle it the way `PlaceCheckIntervalMs` already
+  throttles the street lookup, and consider its own endpoint rather than
+  bloating the position payload.
+- **Wheel and door counts vary by vehicle**, and a bike has neither doors nor
+  four wheels. The schematic has to adapt, or degrade to a simple parts list.
+- **The artwork must be ours.** A top-down vehicle silhouette drawn as our own
+  SVG, not anything extracted from the game — same rule as the map image and
+  the character portraits.
+
+Worth building the parts list first and the schematic second: the list is honest
+and useful immediately, and it proves the data before any drawing work.
+
 ---
 
-*Items 7 and 8 are deliberately last. The MVP is the road map view alone; expand
+*Item 7 is deliberately last. The MVP is the road map view alone; expand
 only once that is working and tested.*
 
 ## 7. Satellite view

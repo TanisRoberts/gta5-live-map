@@ -37,6 +37,51 @@ const FETCH_TIMEOUT  = 2000;
 const TRAIL_MIN_MOVE = 3;     // game units between trail points
 
 /*
+ * A respawn teleports you across the map, and joining those two points draws a
+ * line you never travelled. Anything further than this in one sample is taken
+ * as a jump rather than movement.
+ *
+ * The budget is generous on purpose: a throttled background tab can leave a
+ * second between samples, and a jet covers a lot of ground in a second. The
+ * floor stops a stationary sample being called a teleport by rounding.
+ */
+const TRAIL_JUMP_FLOOR = 120;   // game units
+const TRAIL_JUMP_FACTOR = 3;    // multiple of plausible travel in the gap
+const TRAIL_EVENT_MAX = 40;     // markers kept before the oldest is dropped
+
+/*
+ * Plate designs, keyed by the game's own LicensePlateStyle.
+ *
+ * The six base styles are grounded rather than guessed: vehshare.ytd holds
+ * exactly plate01..plate05 plus yankton_plate, matching the six base enum
+ * values, and Rockstar named five of them after their own colours. San Andreas
+ * is the state (Los Santos is a city in it), which is why the banner reads the
+ * way a California plate does.
+ *
+ * The Enhanced-only branded styles below are a reasonable reading of each
+ * brand, NOT checked against the artwork — their textures live in DLC archives
+ * that have not been opened. The banner text is right; treat the colours as
+ * provisional.
+ */
+const PLATE_STYLES = {
+  BlueOnWhite1:  { bg: '#fefdf6', edge: '#a9a68f', ink: '#17307d', band: '#33599f', text: 'San Andreas' },
+  BlueOnWhite2:  { bg: '#fefdf6', edge: '#a9a68f', ink: '#17307d', band: '#33599f', text: 'San Andreas' },
+  BlueOnWhite3:  { bg: '#fefdf6', edge: '#a9a68f', ink: '#17307d', band: '#33599f', text: 'San Andreas' },
+  YellowOnBlue:  { bg: '#1b3f8f', edge: '#0f2557', ink: '#ffd23f', band: '#ffd23f', text: 'San Andreas' },
+  YellowOnBlack: { bg: '#141414', edge: '#000000', ink: '#f5c518', band: '#f5c518', text: 'San Andreas' },
+  NorthYankton:  { bg: '#f2f6fb', edge: '#9fb0c4', ink: '#1d4c86', band: '#1d4c86', text: 'North Yankton' },
+  // Provisional, as noted above.
+  ECola:         { bg: '#f4f2ea', edge: '#a33', ink: '#c0242c', band: '#c0242c', text: 'eCola' },
+  Sprunk:        { bg: '#f4f2ea', edge: '#3a7d2c', ink: '#2f7a24', band: '#2f7a24', text: 'Sprunk' },
+  LasVenturas:   { bg: '#fdf6e6', edge: '#b09a63', ink: '#8a1f1f', band: '#8a1f1f', text: 'Las Venturas' },
+  LibertyCity:   { bg: '#f7f7f2', edge: '#9a9a8c', ink: '#294a2e', band: '#294a2e', text: 'Liberty City' },
+  LSCarMeet:     { bg: '#17181c', edge: '#000000', ink: '#e8e6df', band: '#7ad0ff', text: 'LS Car Meet' },
+  LSPanic:       { bg: '#17181c', edge: '#000000', ink: '#e8e6df', band: '#ff7ac0', text: 'Los Santos' },
+  LSPounders:    { bg: '#f4f2ea', edge: '#a9a68f', ink: '#7a3410', band: '#c25f1c', text: 'Los Santos' }
+};
+const PLATE_DEFAULT = PLATE_STYLES.BlueOnWhite1;
+
+/*
  * Separate follow zooms for driving and walking. On foot you want to see the
  * street you are on; at speed you want to see what is coming. Switching mode
  * snaps to the relevant one, which also discards any manual zoom — that is
@@ -44,6 +89,37 @@ const TRAIL_MIN_MOVE = 3;     // game units between trail points
  */
 const ZOOM_VEHICLE = 0.5;
 const ZOOM_FOOT    = 2;
+
+// Where the tacho's red zone starts. The game exposes no redline of its own,
+// so this is our choice, not a value read from the vehicle.
+const RPM_REDLINE = 0.85;
+
+// Engine condition. The game's scale runs 1000 down to 0, and on past it into
+// negatives once the engine is dead; the plugin sends it raw so these stay
+// tunable here.
+const ENGINE_MAX  = 1000;
+const ENGINE_HURT = 700;   // below this it is visibly smoking
+const ENGINE_DEAD = 0;     // at or below, it will not run
+
+/*
+ * The game's own day/night boundaries, not guessed ones.
+ *
+ * GTA V's timecycle files (common/data/timecycle/w_*.xml, read out of the
+ * archives with the tile ripper's --dump) hold 13 keyframes per property, on
+ * the engine's fixed hours 0, 5, 6, 7, 10, 12, 16, 17, 19, 20,
+ * 21, 22, 24. Keyframe 5 is noon, which is where light_dir_mult peaks at 64 --
+ * that is the check that the mapping is right rather than assumed.
+ *
+ * In w_extrasunny.xml the sun term light_dir_mult reads:
+ *   0.2  0.0  5.0  10.0  32.0  64.0  52.0  40.0  22.0  12.0  5.0  0.0  0.2
+ * It is exactly zero at 05:00 and 22:00 and non-zero between, so the sun
+ * contributes nothing outside 06:00-21:00. The hours either side are the
+ * interpolated dawn and dusk.
+ */
+const DAWN_START  = 5;
+const DAY_START   = 6;
+const DUSK_START  = 21;
+const NIGHT_START = 22;
 
 /*
  * Trail styling.
@@ -136,11 +212,54 @@ const defaults = {
   transform:   null,     // { a, b, c, d }
   follow:      true,
   trailLength: 400,
+  trailVisible: true,
   mock:        false,
   server:      "",
-  panelOpen:   null,     // null = decide from viewport width on first run
+  // Persisted now that the settings panel can actually change them. They were
+  // briefly constants precisely because it could not.
+  autoZoom:    true,
+  zoomVehicle: ZOOM_VEHICLE,
+  zoomFoot:    ZOOM_FOOT,
+  units:       'mph',    // 'mph' | 'kmh'
+  vignette:    true,
+  uiHidden:    false,
   transformSource: null  // "auto" (from the setup tool) or "manual"
 };
+
+/*
+ * GTA's vehicle colours are enum names, not values. This maps the families to
+ * something close enough for a 10px swatch — the point is "roughly that colour
+ * at a glance", not a paint match. Anything unrecognised falls back to grey
+ * rather than guessing wrong.
+ */
+const COLOUR_SWATCH = [
+  [/black|carbon/i,          '#15181c'],
+  [/white|ice/i,             '#e8ebee'],
+  [/silver|chrome|platinum/i,'#b9c0c7'],
+  [/(^|[^a-z])grey|gray|gunmetal|anthracite|graphite/i, '#6b7480'],
+  [/red|crimson|garnet|wine|cherry/i, '#c0392b'],
+  [/orange|copper|bronze|sunset/i,    '#d3641d'],
+  [/yellow|gold|lime.?green|bright.?yellow/i, '#d8b021'],
+  [/green|olive|forest|moss/i,        '#2e7d46'],
+  [/aqua|teal|turquoise/i,            '#1f8f92'],
+  [/blue|navy|ultra.?blue|midnight/i, '#2b6cb0'],
+  [/purple|violet|lilac|indigo/i,     '#6b4b9c'],
+  [/pink|magenta|salmon/i,            '#c2568c'],
+  [/brown|beige|tan|cream|sand|umber/i, '#8a7355']
+];
+
+function colourSwatch(name) {
+  if (!name) return null;
+  if (/^custom$/i.test(name)) return null;
+  for (const [re, hex] of COLOUR_SWATCH) if (re.test(name)) return hex;
+  return '#6b7480';
+}
+
+/** "MetallicBlack" -> "Metallic Black" */
+function prettyColour(name) {
+  if (!name) return '';
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
+}
 
 let settings = load();
 
@@ -252,6 +371,14 @@ function headingToCssDeg(heading) {
 let buf = [];
 let clockOffset = null;
 let lastSampleT = -Infinity;
+
+/* True while the last raw sample had the player dead or under arrest. Declared
+   here with the rest of the feed state because resetBuffer clears it, and that
+   runs before anything further down the file has been evaluated. */
+let wasDown = false;
+
+/* So one break is applied once, not once per frame while its sample is current. */
+let lastBreakT = null;
 let lastGoodAt  = -Infinity;
 
 /*
@@ -302,6 +429,9 @@ function pushSample(s) {
     if (gap > 0 && gap < 5000) sampleGapMs += (gap - sampleGapMs) * 0.2;
   }
 
+  // Classified here, on raw samples, before interpolation can smooth it away.
+  s.trail = classifySample(s, prev);
+
   buf.push(s);
   lastGoodAt = now;
 
@@ -315,6 +445,7 @@ function resetBuffer() {
   lastSampleT = -Infinity;
   lastGoodAt  = -Infinity;
   sampleGapMs = POLL_MS;
+  wasDown = false;
 }
 
 /** Interpolated state at a point on our local clock, or null. */
@@ -327,6 +458,15 @@ function sampleAt(tLocal) {
   let i = buf.length - 2;
   while (i > 0 && buf[i].lt > tLocal) i--;
   const p = buf[i], q = buf[i + 1];
+
+  /*
+   * Never interpolate across a classified sample. Blending a pre-death
+   * position with a post-respawn one produces a smooth walk across the map
+   * that is not where anybody was, and that blend is what hid the teleport in
+   * the first place. Snap to the newer sample instead.
+   */
+  if (q.trail) return q;
+
   const span = q.lt - p.lt;
   const u = span > 0 ? (tLocal - p.lt) / span : 0;
 
@@ -361,6 +501,9 @@ let feedError = null;
 let failures  = 0;
 let nextTryAt = 0;
 
+/** Last time /pos answered at all, regardless of whether the sample was new. */
+let lastHttpOkAt = -Infinity;
+
 async function pollOnce() {
   // Back off while the endpoint is down, so a missing plugin doesn't hammer it
   // (and the console) ten times a second.
@@ -371,6 +514,10 @@ async function pollOnce() {
   try {
     const r = await fetch(posUrl(), { signal: ctrl.signal, cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
+    // Note the HTTP success separately from the sample. If the server keeps
+    // answering but the timestamp stops advancing, the game is paused rather
+    // than unreachable — a very different thing to tell the user.
+    lastHttpOkAt = performance.now();
     pushSample(await r.json());
     feedError = null;
     failures  = 0;
@@ -402,12 +549,12 @@ async function pollOnce() {
  * trail category, and carry the colour/plate/street fields the cards will need.
  */
 const MOCK_VEHICLES = [
-  { name: 'Sultan',      cls: 'Sports',      colour: 'MetallicBlue',   plate: '46EEK572' },
-  { name: 'Buffalo STX', cls: 'Sedans',      colour: 'MetallicBlack',  plate: '11ABC222' },
-  null,                                                                 // on foot
-  { name: 'Sanchez',     cls: 'Motorcycles', colour: 'MatteRed',       plate: '99XYZ001' },
-  { name: 'Dinghy',      cls: 'Boats',       colour: 'MetallicWhite',  plate: null },
-  { name: 'Buzzard',     cls: 'Helicopters', colour: 'MetallicGreen',  plate: null },
+  { name: 'Sultan',      make: 'Karin',       cls: 'Sports',      colour: 'MetallicBlue',  plate: '46EEK572', wheels: 4 },
+  { name: 'Buffalo STX', make: 'Bravado',     cls: 'Sedans',      colour: 'MetallicBlack', plate: '11ABC222', wheels: 4 },
+  null,                                                                                    // on foot
+  { name: 'Sanchez',     make: 'Maibatsu',    cls: 'Motorcycles', colour: 'MatteRed',      plate: '99XYZ001', wheels: 2 },
+  { name: 'Dinghy',      make: 'Speedophile', cls: 'Boats',       colour: 'MetallicWhite', plate: null,       wheels: 0 },
+  { name: 'Buzzard',     make: 'Nagasaki',    cls: 'Helicopters', colour: 'MetallicGreen', plate: null,       wheels: 0 },
   null
 ];
 
@@ -424,6 +571,8 @@ let mockTimer   = null;
 let mockPrev    = null;
 let mockTheta   = 0;
 let mockHeading = 0;
+let mockWasDead = false;
+const MOCK_DEATH_PERIOD_MS = 45000;   // how often the mock dies
 
 function mockPos(theta) {
   const R = 1400 * (1 + 0.12 * Math.sin(3 * theta));
@@ -433,6 +582,21 @@ function mockPos(theta) {
 function mockTick() {
   const t = performance.now();
   const dt = mockPrev ? Math.min((t - mockPrev.t) / 1000, 0.25) : 0;
+
+  /*
+   * Die periodically, so the trail's break and its death marker can be tested
+   * without repeatedly getting killed in game. Dead is flagged for a moment at
+   * the spot, then the position jumps the way a hospital respawn does; every
+   * other cycle is an arrest instead, so both markers get exercised.
+   */
+  const inCycle = t % MOCK_DEATH_PERIOD_MS;
+  const dead = inCycle < 800;
+  const arrestTurn = Math.floor(t / MOCK_DEATH_PERIOD_MS) % 2 === 1;
+  if (!dead && mockWasDead) {
+    mockTheta += 2.1;        // the teleport
+    mockPrev = null;         // or the jump reads as an impossible speed
+  }
+  mockWasDead = dead;
 
   // Advance along the loop at a plausible ground speed, so the reported speed
   // and the distance actually covered always agree.
@@ -454,21 +618,63 @@ function mockTick() {
 
   const place = MOCK_STREETS[Math.floor(t / 20000) % MOCK_STREETS.length];
 
+  // Gear and revs, derived from speed so the tacho sweeps and resets the way a
+  // cluster does, crossing the red zone just before each change. Kept in the
+  // mock because a mock that has drifted from the plugin's shape hides bugs:
+  // this one previously sent no vehicleClass, so every mock vehicle read as a
+  // car and a broken trail-colour path looked fine.
+  const MOCK_TOP_SPEED = 40;   // m/s at which top gear is reached
+  const MOCK_GEARS = 6;
+  let gear = 0, rpm = 0;
+  if (veh) {
+    const f = Math.min(speed / MOCK_TOP_SPEED, 0.999);
+    gear = Math.floor(f * MOCK_GEARS) + 1;
+    rpm = 0.2 + 0.75 * ((f * MOCK_GEARS) % 1);
+  }
+
   pushSample({
     x: p.x,
     y: p.y,
     z: 30 + 25 * Math.sin(mockTheta * 2),
     heading: mockHeading,
     speed,
+    rpm,
+    gear,
+    fuel: veh ? 65 : -1,
     inVehicle: !!veh,
     vehicleDisplayName: veh ? veh.name : null,
     vehicleClass:       veh ? veh.cls : null,
     vehicleColor:       veh ? veh.colour : null,
     licensePlate:       veh ? veh.plate : null,
+    // Walk every plate design in turn, so all thirteen can be looked at
+    // without owning thirteen cars.
+    plateStyle:         veh ? Object.keys(PLATE_STYLES)[Math.floor(t / 4000) % Object.keys(PLATE_STYLES).length] : null,
+    vehicleMake:        veh ? veh.make : null,
+    /*
+     * Damage cycles so every tell-tale state can be seen with the game shut:
+     * the engine walks healthy -> damaged -> destroyed, and tyres go flat one
+     * at a time. A mock that only ever shows the happy path proves nothing.
+     */
+    engineHealth:       veh ? [1000, 1000, 450, 0][Math.floor(t / 9000) % 4] : 0,
+    onFire:             false,
+    tyresBurst:         veh ? Math.min(veh.wheels, Math.floor(t / 13000) % 3) : 0,
+    tyreCount:          veh ? veh.wheels : 0,
+    // Engine and lights cycle so the tell-tales can be seen changing with the
+    // game shut, rather than sitting in one state forever.
+    engineRunning:      !!veh,
+    lightsOn:           !!veh && Math.floor(t / 7000) % 3 > 0,
+    highBeams:          !!veh && Math.floor(t / 7000) % 3 === 2,
+    // Cycles into the broken state so the red lights tell-tale can be seen
+    // without shooting a car's headlights out.
+    headlightsGone:     !!veh && Math.floor(t / 11000) % 4 === 3,
+    headlightL:         !!veh && Math.floor(t / 11000) % 4 >= 2,
+    headlightR:         !!veh && Math.floor(t / 11000) % 4 === 3,
     streetName:     place.street,
     crossingStreet: place.crossing,
     zoneName:       place.zone,
     wantedLevel: Math.floor(t / 25000) % 6,
+    isDead:     dead && !arrestTurn,
+    isArrested: dead && arrestTurn,
     gameHour:   Math.floor(gameMinutes / 60),
     gameMinute: gameMinutes % 60,
     t
@@ -495,8 +701,56 @@ function stopFeed() {
 }
 
 function updateFeedStatus() {
+  /*
+   * Only judge staleness when someone is actually looking.
+   *
+   * A hidden tab has its timers throttled — to once a second, and to once a
+   * minute after a while — so the feed goes stale because WE stopped asking,
+   * not because the plugin stopped answering. Reporting signal loss for that
+   * is crying wolf, and an indicator whose entire value is being trusted
+   * cannot afford it. The brief settling window covers the gap between
+   * becoming visible and the first poll landing.
+   */
+  const now = performance.now();
+  const settling = document.hidden || (now - becameVisibleAt < 1200);
+  const fresh = settling || (now - lastGoodAt < staleMs());
+
+  /*
+   * A paused game still answers /pos — the HTTP thread is untouched — but the
+   * script stops ticking, so the timestamp freezes and no new samples arrive.
+   * That is a completely different situation from the plugin being gone, and
+   * calling both "No signal" sent us chasing a phantom once already.
+   */
+  const paused = !fresh && !settings.mock && (now - lastHttpOkAt < 3000);
+
+  // The always-visible light. A frozen marker with no explanation reads as a
+  // paused game rather than a broken feed, so this must not live behind the
+  // settings cog.
+  const signal = $('#signal'), signalText = $('#signalText');
+  signal.classList.toggle('lost', !fresh && !paused);
+  signal.classList.toggle('paused', paused);
+  signalText.textContent = settings.mock ? 'Mock'
+    : fresh  ? 'Live'
+    : paused ? 'Paused'
+    : 'No signal';
+  /*
+   * Dim every data card on signal loss, and only on signal loss.
+   *
+   * The street name is a claim about right now, and so are the speed, the
+   * revs and the vehicle — a confident-looking card over a dead feed is a
+   * lie. Previously only the nav card dimmed, which read as a rendering
+   * glitch rather than a signal, because nothing around it agreed.
+   *
+   * A paused game is excluded on purpose: that data is stopped, not wrong,
+   * and the amber Paused light already says so.
+   */
+  const lost = !fresh && !paused;
+  $('#navCard').classList.toggle('stale', lost);
+  $('#vehicleCard').classList.toggle('stale', lost);
+  $('#speedo').classList.toggle('stale', lost);
+
+  // Detail, for the Advanced section.
   const dot = $('#feedDot'), txt = $('#feedStatus');
-  const fresh = performance.now() - lastGoodAt < staleMs();
   dot.className = 'dot';
   if (settings.mock) {
     dot.classList.add('mock');
@@ -537,6 +791,8 @@ function topLeftCrs(height) {
 let marker = null, markerSvg = null;
 let trailLayer = null;
 let trailPts = [];          // game-space points, each tagged with its category
+let eventLayer = null;      // death and arrest markers
+let trailEvents = [];       // {x, y, kind} for those markers
 let calLayer = null;
 
 function initMap(tileHeight) {
@@ -556,6 +812,8 @@ function initMap(tileHeight) {
   // A group rather than one polyline: the trail is drawn as a run of segments
   // so it can change colour wherever the vehicle type changes.
   trailLayer = L.layerGroup().addTo(map);
+  // Above the trail, so a marker is never hidden under the line it interrupts.
+  eventLayer = L.layerGroup().addTo(map);
 
   // Panning by hand means you want manual control.
   map.on('dragstart', () => { if (settings.follow) setFollow(false); });
@@ -706,15 +964,23 @@ function trailCategory(s) {
  */
 function redrawTrail() {
   trailLayer.clearLayers();
+  // Hidden is a display choice, not a reason to stop recording — the points
+  // keep accumulating so turning it back on shows where you actually went.
+  if (!settings.trailVisible) return;
   if (!settings.transform || trailPts.length < 2) return;
 
   let start = 0;
   for (let i = 1; i <= trailPts.length; i++) {
     const ended = i === trailPts.length;
-    if (!ended && trailPts[i].cat === trailPts[start].cat) continue;
+    // A break marks a place we did not travel — a respawn, or a mission warp.
+    // It ends the run just like a colour change, but differently: a colour
+    // change is continuous, so its run reaches one point into the next to butt
+    // the colours together, whereas a break must stop short or we would draw
+    // the very line we are trying to avoid.
+    const broken = !ended && trailPts[i].brk;
+    if (!ended && !broken && trailPts[i].cat === trailPts[start].cat) continue;
 
-    // Overlap by one so consecutive runs share a vertex.
-    const run = trailPts.slice(start, ended ? i : i + 1);
+    const run = trailPts.slice(start, (ended || broken) ? i : i + 1);
     if (run.length >= 2) {
       const pts = run.map(p => gameToLatLng(p.x, p.y));
       const colour = TRAIL_COLOURS[trailPts[start].cat] || TRAIL_COLOURS.other;
@@ -736,19 +1002,22 @@ function redrawTrail() {
   }
 }
 
-function pushTrail(x, y, cat) {
+function pushTrail(x, y, cat, brk) {
   const n = settings.trailLength;
   if (n <= 0) {
     if (trailPts.length) { trailPts = []; trailLayer.clearLayers(); }
+    if (trailEvents.length) { trailEvents = []; drawEvents(); }
     return;
   }
 
   const last = trailPts[trailPts.length - 1];
   // Always record a point when the category changes, however small the move,
   // or the colour boundary lands wherever the next 3-unit step happens to fall.
-  if (last && last.cat === cat && Math.hypot(x - last.x, y - last.y) < TRAIL_MIN_MOVE) return;
+  // A break must always be recorded, however small the step, or the trail
+  // would rejoin across the very gap it marks.
+  if (!brk && last && last.cat === cat && Math.hypot(x - last.x, y - last.y) < TRAIL_MIN_MOVE) return;
 
-  trailPts.push({ x, y, cat });
+  trailPts.push({ x, y, cat, brk: !!brk });
   while (trailPts.length > n) trailPts.shift();
   redrawTrail();
 }
@@ -766,6 +1035,9 @@ let awaitingFirstFix = true;
 /** null until the first fix, so the first sample does not count as a change. */
 let lastInVehicle = null;
 
+/** When the tab last became visible — see updateFeedStatus. */
+let becameVisibleAt = 0;
+
 /**
  * Advances the interpolated state.
  *
@@ -776,6 +1048,82 @@ let lastInVehicle = null;
  * stayed blank and no marker ever appeared, which is worse than saying nothing.
  * The HUD timer calls this too, so the readout is correct the moment you look.
  */
+
+/**
+ * Whether a freshly arrived raw sample should be recorded, skipped, or begin a
+ * new run. Returns 'skip', 'break', or '' for ordinary travel.
+ *
+ * Death and arrest are driven by the game's own flags rather than inferred
+ * from the size of the position jump. Inferring it did not work: time stops
+ * during the wasted sequence, so the feed goes quiet and then delivers one
+ * sample far away, and sampleAt walked between the two over many frames —
+ * dozens of small steps, none of them impossible, drawing the very line across
+ * the map the check existed to catch.
+ *
+ * The flags have neither problem. The marker lands on the first sample that
+ * reports you down, which is exactly where it happened, and nothing about it
+ * depends on how far the respawn moved you or how long the feed was quiet.
+ *
+ * This must run on RAW samples, before any interpolation.
+ */
+function classifySample(s, prev) {
+  const dead = !!s.isDead;
+  const down = dead || !!s.isArrested;
+
+  // Rising edge: where the journey actually ended.
+  if (down && !wasDown) {
+    trailEvents.push({ x: s.x, y: s.y, kind: dead ? 'death' : 'arrest' });
+    while (trailEvents.length > TRAIL_EVENT_MAX) trailEvents.shift();
+    drawEvents();
+  }
+  const revived = !down && wasDown;
+  wasDown = down;
+
+  // Record nothing while you are down. A body does not travel, and whatever
+  // the camera does over the wasted sequence is not a journey.
+  if (down) return 'skip';
+
+  // First sample back on your feet: start a new run rather than joining it to
+  // where you fell.
+  if (revived) return 'break';
+
+  /*
+   * Everything else that moves impossibly far is a mission warp or a fast
+   * travel. Break for those too — we still did not drive them — but do not
+   * invent a death to explain them.
+   */
+  if (!prev) return '';
+  const gapSec = Math.max(0, (s.t - prev.t) / 1000);
+  const moved = Math.hypot(s.x - prev.x, s.y - prev.y);
+  const plausible = Math.max(TRAIL_JUMP_FLOOR,
+                             (Math.abs(s.speed || 0) + 10) * gapSec * TRAIL_JUMP_FACTOR);
+  return moved > plausible ? 'break' : '';
+}
+
+/** Death and arrest markers, redrawn whole — there are only ever a handful. */
+function drawEvents() {
+  if (!eventLayer) return;
+  eventLayer.clearLayers();
+  // Tied to the trail's own visibility: these mark breaks in it, and a marker
+  // floating over a hidden trail explains nothing.
+  if (!settings.trailVisible || !settings.transform) return;
+
+  trailEvents.forEach(e => {
+    L.marker(gameToLatLng(e.x, e.y), {
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 500,
+      icon: L.divIcon({
+        className: '',
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+        html: '<div class="trail-event ' + e.kind + '">' +
+              '<svg viewBox="0 0 24 24"><use href="#i-' + e.kind + '"/></svg></div>'
+      })
+    }).addTo(eventLayer);
+  });
+}
+
 function sampleCurrent() {
   const s = sampleAt(performance.now() - renderDelayMs());
   if (!s) return null;
@@ -786,7 +1134,19 @@ function sampleCurrent() {
   // record of where you went, not a drawing artefact — tying it to
   // requestAnimationFrame meant a hidden tab silently lost the whole route,
   // which is the opposite of what a breadcrumb trail is for.
-  pushTrail(s.x, s.y, trailCategory(s));
+  /*
+   * Nothing is recorded while you are down, so the trail simply stops where
+   * you fell and picks up again where you came back.
+   *
+   * The break belongs to one sample, but that sample stays current for many
+   * frames while the render delay catches up, so it is applied once — or every
+   * frame would push another break point at the same spot.
+   */
+  if (s.trail !== 'skip') {
+    const brk = s.trail === 'break' && s.t !== lastBreakT;
+    if (brk) lastBreakT = s.t;
+    pushTrail(s.x, s.y, trailCategory(s), brk);
+  }
 
   return s;
 }
@@ -810,7 +1170,8 @@ function frame() {
   // zoom also discards any manual zoom, which is intended — the two levels stay
   // predictable rather than drifting with whatever you last scrolled to.
   const inVehicle = !!s.inVehicle;
-  const modeChanged = lastInVehicle !== null && lastInVehicle !== inVehicle;
+  const modeChanged =
+    settings.autoZoom && lastInVehicle !== null && lastInVehicle !== inVehicle;
   lastInVehicle = inVehicle;
 
   if (settings.follow) {
@@ -825,14 +1186,50 @@ function frame() {
 }
 
 /**
- * Follow zoom for the current mode.
- *
- * Deliberately constants rather than persisted settings: there is no UI to
- * change them, and a stored copy silently overrides any future retune — which
- * it already did once. Item 1 adds real map controls; persist them then.
+ * Follow zoom for the current mode. Now backed by settings, since the panel can
+ * change them — the constants remain the fallback for a corrupt stored value.
  */
 function modeZoom(inVehicle) {
-  return inVehicle ? ZOOM_VEHICLE : ZOOM_FOOT;
+  const z = inVehicle ? settings.zoomVehicle : settings.zoomFoot;
+  return Number.isFinite(z) ? z : (inVehicle ? ZOOM_VEHICLE : ZOOM_FOOT);
+}
+
+/**
+ * The in-game clock, and which part of the day it belongs to. Hours come from
+ * the game's own timecycle keyframes — see DAY_START above.
+ */
+function updateClock(s) {
+  const el = $('#clock');
+  const h = s.gameHour, m = s.gameMinute;
+  if (!Number.isFinite(h) || !Number.isFinite(m)) { el.hidden = true; return; }
+  el.hidden = false;
+
+  $('#clockTime').textContent =
+    String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+
+  const phase = h >= NIGHT_START || h < DAWN_START ? 'night'
+              : h < DAY_START                      ? 'dawn'
+              : h < DUSK_START                     ? 'day'
+              : 'dusk';
+  el.classList.remove('day', 'night', 'dawn', 'dusk');
+  el.classList.add(phase);
+
+  // Moon only in true night; dawn and dusk keep the sun, tinted, because the
+  // sun is still contributing light in those hours.
+  $('#clockIcon').firstElementChild.setAttribute(
+    'href', phase === 'night' ? '#i-moon' : '#i-sun');
+  el.title = 'In-game time — ' + phase;
+}
+
+/*
+ * Light one tell-tale. The class carries the colour (see .status-row in the
+ * stylesheet); the label carries the same state as text, since a colour change
+ * on its own says nothing to a screen reader.
+ */
+function setTellTale(el, state, label) {
+  el.classList.remove('on', 'beam', 'warn', 'caution');
+  if (state) el.classList.add(state);
+  el.setAttribute('aria-label', label);
 }
 
 function updateHud() {
@@ -840,13 +1237,168 @@ function updateHud() {
   // rAF is paused while the tab is hidden, so advance the state here too.
   const s = sampleCurrent();
   if (!s) return;
-  $('#hudSpeed').textContent   = Math.round(s.speed * 2.23694);      // m/s -> mph
-  $('#hudVehicle').textContent = s.inVehicle ? (s.vehicleDisplayName || 'Vehicle') : 'On foot';
-  $('#hudWanted').textContent  = s.wantedLevel > 0 ? '★'.repeat(s.wantedLevel) : '—';
-  $('#hudClock').textContent   =
-    String(s.gameHour ?? 0).padStart(2, '0') + ':' + String(s.gameMinute ?? 0).padStart(2, '0');
-  $('#hudPos').textContent     =
-    `${s.x.toFixed(0)}, ${s.y.toFixed(0)}, ${(s.z ?? 0).toFixed(0)}`;
+
+  // The clock applies on foot as much as in a vehicle, so it sits above the
+  // guard below rather than inside it.
+  updateClock(s);
+
+  /*
+   * Speed, revs and the tell-tales are all vehicle instruments, so the whole
+   * cluster goes away on foot rather than reading 3 mph in top gear with a
+   * dead tacho beneath it.
+   *
+   * This guards rather than returns: street, district and wanted level all
+   * still apply on foot, and they are updated further down.
+   */
+  $('#speedo').hidden = !s.inVehicle;
+
+  if (s.inVehicle) {
+    const kmh = s.speed * 3.6;
+    $('#speedValue').textContent = Math.round(settings.units === 'kmh' ? kmh : kmh * 0.621371);
+    $('#speedUnit').textContent = settings.units === 'kmh' ? 'km/h' : 'mph';
+
+    // Tacho. RPM arrives normalised 0..1, so it needs no scaling.
+    const hasRpm = Number.isFinite(s.rpm);
+    $('#rpmBar').hidden = !hasRpm;
+    if (hasRpm) {
+      const frac = Math.max(0, Math.min(1, s.rpm));
+      $('#rpmFill').style.transform = 'scaleX(' + frac.toFixed(3) + ')';
+      $('#rpmFill').classList.toggle('over', frac >= RPM_REDLINE);
+    }
+
+    /*
+     * Tell-tales. Each is always in the DOM and lit by class, so the row keeps
+     * its width and nothing jumps as states change. Full beam takes precedence
+     * over side lights: it is the stronger signal, and the one worth being
+     * reminded of.
+     */
+    $('#statusRow').hidden = false;
+    /*
+     * Engine, by condition rather than by switch. Health runs 0..1000 and the
+     * plugin sends it raw, so these thresholds live here and can be retuned
+     * without a rebuild and a reload.
+     */
+    const eh = Number.isFinite(s.engineHealth) ? s.engineHealth : ENGINE_MAX;
+    const engineState = (s.onFire || eh <= ENGINE_DEAD) ? 'warn'
+                      : eh < ENGINE_HURT                ? 'caution'
+                      : s.engineRunning                 ? 'on'
+                      : '';
+    setTellTale($('#stEngine'), engineState,
+                s.onFire            ? 'Engine on fire'
+                : eh <= ENGINE_DEAD ? 'Engine destroyed'
+                : eh < ENGINE_HURT  ? 'Engine damaged'
+                : s.engineRunning   ? 'Engine running'
+                : 'Engine off');
+    /*
+     * Lights. Broken outranks the switch, because once a unit is gone what the
+     * switch says stops mattering — and one out is a caution while both is a
+     * warning, the same grammar as the tyres.
+     *
+     * The per-side natives are trusted for the count and the "both" native as
+     * a floor, so a vehicle the game reports as having no headlights at all
+     * still reads as unlit.
+     */
+    const outCount = (s.headlightL ? 1 : 0) + (s.headlightR ? 1 : 0);
+    const bothOut = !!s.headlightsGone || outCount >= 2;
+    const lightState = bothOut          ? 'warn'
+                     : outCount === 1   ? 'caution'
+                     : s.highBeams      ? 'beam'
+                     : s.lightsOn       ? 'on'
+                     : '';
+    setTellTale($('#stLights'), lightState,
+                bothOut          ? 'No working headlights'
+                : outCount === 1 ? 'One headlight out'
+                : s.highBeams    ? 'Full beam'
+                : s.lightsOn     ? 'Lights on'
+                : 'Lights off');
+    /*
+     * Tyres. One flat is a caution; more than one is a genuine emergency, and
+     * the difference is worth a colour rather than a count nobody can read at
+     * this distance.
+     */
+    const flats = Number.isFinite(s.tyresBurst) ? s.tyresBurst : 0;
+    setTellTale($('#stTyres'), flats > 1 ? 'warn' : flats === 1 ? 'caution' : '',
+                flats === 0 ? 'Tyres intact'
+                : flats === 1 ? 'One flat tyre'
+                : flats + ' flat tyres');
+
+    const gear = $('#gear');
+    const showGear = Number.isFinite(s.gear) && s.gear > 0;
+    gear.hidden = !showGear;
+    if (showGear) gear.textContent = s.gear;
+  }
+
+  // Vehicle card — absent entirely on foot, rather than showing empty fields.
+  const vehicleCard = $('#vehicleCard');
+  if (s.inVehicle) {
+    vehicleCard.hidden = false;
+    /*
+     * "Vapid Speedo" rather than "Speedo": the card looked bare with one short
+     * word on it. GET_MAKE_NAME_FROM_VEHICLE_MODEL supplies the make, but it
+     * does not answer for every model, so the model alone stays the fallback.
+     */
+    $('#vehicleModel').textContent =
+      [s.vehicleMake, s.vehicleDisplayName].filter(Boolean).join(' ') || 'Vehicle';
+
+    const colour = $('#vehicleColour');
+    const swatch = colourSwatch(s.vehicleColor);
+    colour.textContent = prettyColour(s.vehicleColor);
+    colour.hidden = !s.vehicleColor;
+    if (swatch) colour.style.setProperty('--swatch', swatch);
+
+    // The plate is a block of its own now, so the number goes inside it.
+    const plate = $('#vehiclePlate');
+    $('#vehiclePlateNumber').textContent = s.licensePlate || '';
+
+    /*
+     * Wear whichever design the vehicle actually has.
+     *
+     * The real artwork is preferred when the setup tool has extracted it: the
+     * banner, stickers and rivets are then the game's own, and all we add is
+     * the registration in our own font, in the colour the style calls for.
+     * Without it, fall back to drawing an approximation in CSS.
+     */
+    const art = plateArt && plateArt[s.plateStyle];
+    const ps = PLATE_STYLES[s.plateStyle] || PLATE_DEFAULT;
+    plate.classList.toggle('has-art', !!art);
+
+    if (art) {
+      plate.style.setProperty('--plate-img', 'url("plates/' + art.file + '")');
+      plate.style.setProperty('--plate-bg', art.bg);
+      plate.style.setProperty('--plate-ink', art.ink);
+    } else {
+      plate.style.removeProperty('--plate-img');
+      plate.style.setProperty('--plate-bg', ps.bg);
+      plate.style.setProperty('--plate-edge', ps.edge);
+      plate.style.setProperty('--plate-ink', ps.ink);
+      plate.style.setProperty('--plate-band', ps.band);
+      $('#plateState').textContent = ps.text;
+    }
+    plate.hidden = !s.licensePlate;
+  } else {
+    vehicleCard.hidden = true;
+  }
+
+  // Street and district
+  $('#streetName').textContent = s.streetName || 'Off-road';
+  $('#streetSub').textContent =
+    [s.crossingStreet ? 'near ' + s.crossingStreet : null, s.zoneName]
+      .filter(Boolean).join(' · ');
+
+  updateVignette(s.wantedLevel || 0);
+}
+
+/**
+ * Wanted level as a vignette. Intensity rides a single custom property so one
+ * CSS rule covers every level, and only opacity/background animate — the
+ * marker keeps moving smoothly underneath.
+ */
+function updateVignette(level) {
+  const el = $('#vignette');
+  const on = settings.vignette && level > 0;
+  el.classList.toggle('on', on);
+  el.classList.toggle('flash', on);
+  el.style.setProperty('--w', on ? (level / 5).toFixed(2) : '0');
 }
 
 // --------------------------------------------------------------------------
@@ -940,8 +1492,8 @@ function calApply() {
   settings.transform = t;
   settings.transformSource = 'manual';   // survives a re-run of the setup tool
   save();
-  trailPts = [];
-  redrawTrail();
+  trailPts = []; trailEvents = [];
+  redrawTrail(); drawEvents();
   renderCal();
 
   // A north-up map image is scaled the same on both axes, so wildly different
@@ -968,8 +1520,8 @@ function calReset() {
   pickingIndex = -1;
   document.body.classList.remove('picking');
   if (!settings.transform && marker) { marker.remove(); marker = null; markerSvg = null; }
-  trailPts = [];
-  redrawTrail();
+  trailPts = []; trailEvents = [];
+  redrawTrail(); drawEvents();
   renderCal();
   if (imageBounds && !settings.transform) map.fitBounds(imageBounds);
   toast(installedTransform
@@ -982,22 +1534,124 @@ function calReset() {
 // --------------------------------------------------------------------------
 function setFollow(on) {
   settings.follow = on;
-  $('#followToggle').checked = on;
+  const btn = $('#btnFollow');
+  if (btn) btn.setAttribute('aria-pressed', String(on));
   save();
 }
 
 function wireUi() {
-  // Panel
+  // --- settings drawer -------------------------------------------------
   const panel = $('#panel');
-  const open = settings.panelOpen === null ? window.innerWidth > 640 : settings.panelOpen;
-  panel.classList.toggle('collapsed', !open);
-  $('#panelToggle').setAttribute('aria-expanded', String(open));
-  $('#panelToggle').addEventListener('click', () => {
-    const collapsed = panel.classList.toggle('collapsed');
-    $('#panelToggle').setAttribute('aria-expanded', String(!collapsed));
-    settings.panelOpen = !collapsed;
+  const settingsBtn = $('#settingsBtn');
+  const setPanel = open => {
+    panel.hidden = !open;
+    settingsBtn.setAttribute('aria-expanded', String(open));
+  };
+  settingsBtn.addEventListener('click', () => setPanel(panel.hidden));
+  $('#panelClose').addEventListener('click', () => setPanel(false));
+
+  // --- map controls ----------------------------------------------------
+  const btnFollow = $('#btnFollow');
+  const syncFollow = () => btnFollow.setAttribute('aria-pressed', String(settings.follow));
+  syncFollow();
+  btnFollow.addEventListener('click', () => {
+    setFollow(!settings.follow);
+    // Following while zoomed out far enough to see the whole island does
+    // nothing — maxBounds leaves nowhere to pan — so a lit button would sit
+    // there looking broken. Zoom to the follow level instead.
+    if (settings.follow && current && settings.transform) {
+      awaitingFirstFix = true;
+    }
+  });
+
+  const btnTrail = $('#btnTrail');
+  const syncTrail = () => btnTrail.setAttribute('aria-pressed', String(settings.trailVisible));
+  syncTrail();
+  btnTrail.addEventListener('click', () => {
+    settings.trailVisible = !settings.trailVisible;
+    save();
+    syncTrail();
+    redrawTrail(); drawEvents();
+  });
+
+  $('#btnRecentre').addEventListener('click', () => {
+    if (current && settings.transform) {
+      map.setView(gameToLatLng(current.x, current.y), modeZoom(!!current.inVehicle));
+    } else if (imageBounds) {
+      map.fitBounds(imageBounds);
+    }
+  });
+
+  const btnFs = $('#btnFullscreen');
+  btnFs.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(() => {
+      toast('The browser refused fullscreen — try F11.');
+    });
+  });
+  document.addEventListener('fullscreenchange', () => {
+    btnFs.setAttribute('aria-pressed', String(!!document.fullscreenElement));
+  });
+
+  const btnHide = $('#btnHideUi');
+  const syncHidden = () => {
+    $('#hud').hidden = settings.uiHidden;
+    document.body.classList.toggle('ui-hidden', settings.uiHidden);
+    btnHide.setAttribute('aria-pressed', String(settings.uiHidden));
+    btnHide.title = settings.uiHidden ? 'Show interface' : 'Hide interface';
+    btnHide.querySelector('use').setAttribute('href', settings.uiHidden ? '#i-eye-off' : '#i-eye');
+  };
+  syncHidden();
+  btnHide.addEventListener('click', () => {
+    settings.uiHidden = !settings.uiHidden;
+    if (settings.uiHidden) setPanel(false);
+    save();
+    syncHidden();
+  });
+
+  // --- zoom ------------------------------------------------------------
+  const autoZoom = $('#autoZoomToggle');
+  autoZoom.checked = settings.autoZoom;
+  autoZoom.addEventListener('change', () => {
+    settings.autoZoom = autoZoom.checked;
     save();
   });
+
+  const zv = $('#zoomVehicleInput'), zf = $('#zoomFootInput');
+  zv.value = settings.zoomVehicle;
+  zf.value = settings.zoomFoot;
+  const readZoom = (input, key) => {
+    const v = Number(input.value);
+    if (!Number.isFinite(v)) return;
+    settings[key] = Math.max(-5, Math.min(3, v));
+    input.value = settings[key];
+    save();
+  };
+  zv.addEventListener('change', () => readZoom(zv, 'zoomVehicle'));
+  zf.addEventListener('change', () => readZoom(zf, 'zoomFoot'));
+
+  // --- display ---------------------------------------------------------
+  $$('input[name=units]').forEach(radio => {
+    radio.checked = radio.value === settings.units;
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      settings.units = radio.value;
+      save();
+    });
+  });
+
+  const vig = $('#vignetteToggle');
+  vig.checked = settings.vignette;
+  vig.addEventListener('change', () => {
+    settings.vignette = vig.checked;
+    save();
+    updateVignette(current ? (current.wantedLevel || 0) : 0);
+  });
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    $('#vignetteHint').textContent =
+      'Your system asks for reduced motion, so the pulse is replaced by a ' +
+      'static rim that still tracks the wanted level.';
+  }
 
   // Feed
   const mock = $('#mockToggle');
@@ -1024,11 +1678,6 @@ function wireUi() {
   $('#calApply').addEventListener('click', calApply);
   $('#calReset').addEventListener('click', calReset);
 
-  // View
-  const follow = $('#followToggle');
-  follow.checked = settings.follow;
-  follow.addEventListener('change', () => setFollow(follow.checked));
-
   const trail = $('#trailRange');
   trail.value = settings.trailLength;
   $('#trailOut').value = settings.trailLength;
@@ -1037,7 +1686,7 @@ function wireUi() {
     $('#trailOut').value = trail.value;
     save();
     while (trailPts.length > settings.trailLength) trailPts.shift();
-    redrawTrail();
+    redrawTrail(); drawEvents();
   });
 
   // Legend, built from TRAIL_COLOURS so there is one source of truth.
@@ -1052,13 +1701,8 @@ function wireUi() {
   });
 
   $('#trailClear').addEventListener('click', () => {
-    trailPts = [];
-    redrawTrail();
-  });
-
-  $('#recentre').addEventListener('click', () => {
-    if (current && settings.transform) map.setView(gameToLatLng(current.x, current.y));
-    else if (imageBounds) map.fitBounds(imageBounds);
+    trailPts = []; trailEvents = [];
+    redrawTrail(); drawEvents();
   });
 
   // Map image
@@ -1093,6 +1737,14 @@ function wireUi() {
     }
   });
 
+  // Coming back to the tab: ask for a fresh sample straight away rather than
+  // waiting for the next scheduled poll, so the settling window is enough.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    becameVisibleAt = performance.now();
+    if (!settings.mock) pollOnce();
+  });
+
   // Escape cancels an armed pick
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && pickingIndex >= 0) {
@@ -1119,6 +1771,26 @@ let installedTransform = null;
  */
 function serverBase() {
   return (settings.server || '').trim().replace(/\/+$/, '');
+}
+
+/*
+ * The real plate artwork, extracted from the game by the setup tool.
+ *
+ * Null until it loads, and it may stay null: the artwork is Rockstar's, so it
+ * is never committed and only exists once the ripper has been run against your
+ * own install. The CSS-drawn plate in PLATE_STYLES is the fallback for that,
+ * and for any style the artwork does not cover.
+ */
+let plateArt = null;
+
+async function fetchPlateArt() {
+  try {
+    const r = await fetch(serverBase() + '/plates/plates.json', { cache: 'no-store' });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) {
+    return null;
+  }
 }
 
 /** The setup tool's manifest, or null if setup has not been run. */
@@ -1197,6 +1869,11 @@ async function init() {
   // tiles decides which CRS the map must be created with, and that cannot be
   // changed afterwards.
   const manifest = await fetchManifest();
+
+  // Independent of the map, and not worth blocking it: if the artwork is not
+  // there the plate simply draws itself.
+  fetchPlateArt().then(a => { plateArt = a; });
+
   initMap(manifestHasTiles(manifest) ? manifest.height : 0);
   wireUi();
 

@@ -152,15 +152,17 @@ const TRAIL_CASING_EXTRA = 4;
  * closest pair is red and yellow at 35 degrees, which the eye separates
  * easily; everything else is 44 degrees or more.
  *
- * Three of them land near a character colour — green near Franklin, blue near
- * Michael, yellow near Trevor, all within about 12 degrees. That is tolerable
- * because the trail is fully saturated where the HUD colours are not, and
- * because the player arrow carries a white glow that separates it from any
- * line it happens to be sitting on.
+ * Blue still lands near Michael and yellow near Trevor, both within about 12
+ * degrees. That is tolerable because the trail is fully saturated where the HUD
+ * colours are not, and because the player arrow carries a white glow that
+ * separates it from any line it happens to be sitting on.
+ *
+ * The jade foot colour is 44 degrees off Franklin, where the green it replaced
+ * was 11 -- so the one character clash that was avoidable is now avoided.
  */
 const TRAIL_COLOURS = {
   car:   '#ffd23f',   // yellow
-  foot:  '#3ddc5a',   // green
+  foot:  '#0f9d76',   // jade
   boat:  '#2f9dff',   // blue
   air:   '#b57bff',   // purple
   bike:  '#ff2a2a',   // red

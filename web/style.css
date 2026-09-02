@@ -473,7 +473,9 @@ body.ui-hidden .panel { display: none; }
   opacity: .35;
   transition: color .15s linear, opacity .15s linear;
 }
-.status-row svg.on      { color: var(--good); opacity: 1; }
+/* White rather than green for the healthy state: "all normal" reads better as
+   plain white, and it keeps green free to mean something. */
+.status-row svg.on      { color: #f2f5f8; opacity: 1; }
 .status-row svg.beam    { color: var(--accent); opacity: 1; }
 .status-row svg.caution { color: var(--star); opacity: 1; }
 .status-row svg.warn    { color: var(--bad); opacity: 1; }

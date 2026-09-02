@@ -249,6 +249,17 @@ plugin-side data item first, and a drawing job second.
 | Petrol tank | `PetrolTankHealth` |
 | Rotors (helicopters) | `HeliMainRotorHealth`, `HeliTailRotorHealth` |
 
+**`fuel` already ships in the feed, and belongs here rather than in a gauge of
+its own.** It was added to answer whether petrol drains in story mode. Measured
+over 72 samples across 6 minutes of driving — 52 of them above 5 m/s, peaking at
+226 km/h — `FuelLevel` never moved off 65. Vanilla GTA V does not consume fuel;
+the level only falls when the tank is holed, which makes it a **damage** signal,
+not a consumption one. Read it alongside `PetrolTankHealth`: a falling level is
+a leak, and a leak is worth showing on this schematic.
+
+Note it is a tank quantity, not a fraction — a percentage needs
+`FuelLevel / PetrolTankVolume`.
+
 Three things to settle rather than discover later:
 
 - **Do not read this every tick.** The per-part collections mean walking wheels,

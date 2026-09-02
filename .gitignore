@@ -46,3 +46,6 @@ web/map/
 # Plate artwork extracted by the setup tool (generated, user-specific).
 # Same rule as the map: it is Rockstar's, it stays on your machine.
 web/plates/
+
+# Character portraits extracted by the setup tool (generated, user-specific).
+web/portraits/

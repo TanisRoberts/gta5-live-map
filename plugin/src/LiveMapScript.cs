@@ -61,6 +61,12 @@ namespace GtaLiveMap
         private int _tyresBurst;
         private int _tyreCount;
 
+        // Resolved only when the player ped changes, which is once per
+        // character switch rather than twenty times a second.
+        private int _lastPedModel;
+        private string _character;
+        private string _characterColor;
+
         public LiveMapScript()
         {
             string directory = ".";
@@ -260,6 +266,15 @@ namespace GtaLiveMap
             float heading = ped.Heading;
             int wantedLevel = player.Wanted.WantedLevel;
 
+            // Which protagonist, cached against the ped model -- see
+            // ResolveCharacter for why the colour is not hard-coded.
+            int pedModel = ped.Model.Hash;
+            if (pedModel != _lastPedModel)
+            {
+                _lastPedModel = pedModel;
+                ResolveCharacter(ped);
+            }
+
             /*
              * Death and arrest, so the client can break the trail rather than
              * drawing a straight line from where you died to the hospital.
@@ -446,6 +461,8 @@ namespace GtaLiveMap
             sb.Append(",\"crossingStreet\":").Append(Json.String(_crossingStreet));
             sb.Append(",\"zoneName\":").Append(Json.String(_zoneName));
             sb.Append(",\"wantedLevel\":").Append(Json.Number(wantedLevel));
+            sb.Append(",\"character\":").Append(Json.String(_character));
+            sb.Append(",\"characterColor\":").Append(Json.String(_characterColor));
             sb.Append(",\"isDead\":").Append(Json.Bool(isDead));
             sb.Append(",\"isArrested\":").Append(Json.Bool(isArrested));
             sb.Append(",\"gameHour\":").Append(Json.Number(gameHour));
@@ -461,6 +478,64 @@ namespace GtaLiveMap
         /// "" and the client has one thing to test. Number plates in particular
         /// come back padded.
         /// </summary>
+        /// <summary>
+        /// Works out which protagonist is being played, and the colour the game
+        /// itself uses for them.
+        ///
+        /// The colour comes from GET_HUD_COLOUR rather than being hard-coded.
+        /// Michael blue, Franklin green and Trevor orange are the game's own
+        /// HUD colours, so there is no reason to approximate them -- and if a
+        /// patch ever retunes them, this follows.
+        ///
+        /// Only called when the player ped model changes, because the four
+        /// OutputArguments are not worth allocating twenty times a second for
+        /// an answer that changes when you switch character.
+        /// </summary>
+        private void ResolveCharacter(Ped ped)
+        {
+            _character = null;
+            _characterColor = null;
+
+            GTA.UI.HudColor hud;
+            if (ped.Model == PedHash.Michael)
+            {
+                _character = "Michael";
+                hud = GTA.UI.HudColor.Michael;
+            }
+            else if (ped.Model == PedHash.Franklin || ped.Model == PedHash.Franklin02)
+            {
+                _character = "Franklin";
+                hud = GTA.UI.HudColor.Franklin;
+            }
+            else if (ped.Model == PedHash.Trevor)
+            {
+                _character = "Trevor";
+                hud = GTA.UI.HudColor.Trevor;
+            }
+            else
+            {
+                // A mission ped, or a custom skin. The client falls back to a
+                // neutral avatar rather than guessing.
+                return;
+            }
+
+            OutputArgument r = new OutputArgument();
+            OutputArgument g = new OutputArgument();
+            OutputArgument b = new OutputArgument();
+            OutputArgument a = new OutputArgument();
+            Function.Call(Hash.GET_HUD_COLOUR, (int)hud, r, g, b, a);
+
+            _characterColor = "#"
+                + Clamp255(r.GetResult<int>()).ToString("x2")
+                + Clamp255(g.GetResult<int>()).ToString("x2")
+                + Clamp255(b.GetResult<int>()).ToString("x2");
+        }
+
+        private static int Clamp255(int v)
+        {
+            return v < 0 ? 0 : (v > 255 ? 255 : v);
+        }
+
         private static string Clean(string value)
         {
             if (string.IsNullOrWhiteSpace(value)) return null;

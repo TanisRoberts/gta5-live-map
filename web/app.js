@@ -147,13 +147,30 @@ const TRAIL_CASING_EXTRA = 4;
  * Hues are spread widely and kept saturated, because the map itself is almost
  * entirely desaturated greys and tans — anything muted disappears into it.
  */
+/*
+ * Trail colours.
+ *
+ * Yellow is deliberately absent. The game's own satnav draws its route in
+ * roughly #ffd23f, and a trail in the same colour reads as a route you are
+ * supposed to follow. It is reserved for when we draw real navigation
+ * ourselves (TODO 3c) and should not be spent on a vehicle category.
+ *
+ * Hues are checked rather than eyeballed. The closest chromatic pair is
+ * magenta and red at 35 degrees; everything else is 44 or more. On foot is
+ * near-neutral by design, so it sits outside that contest entirely.
+ *
+ * That grey is brighter than it first looks for a reason: the map roads are
+ * about 198 luminance, so a mid grey would have read as road with a dark
+ * outline rather than as a colour. This sits about 38 above the roads and
+ * far above the terrain, so it reads on both.
+ */
 const TRAIL_COLOURS = {
-  foot:  '#ffd23f',   // amber
-  car:   '#00c8ff',   // cyan
-  bike:  '#ff4fa3',   // magenta
-  boat:  '#00e58a',   // spring green
-  air:   '#b57bff',   // violet
-  other: '#ff7a45'    // orange
+  car:   '#2f9dff',   // blue
+  foot:  '#e9eef4',   // near-white grey
+  bike:  '#0f9d76',   // jade
+  boat:  '#b57bff',   // purple
+  air:   '#ff2a2a',   // red
+  other: '#ff4de0'    // magenta
 };
 
 const TRAIL_LABELS = {
@@ -574,6 +591,20 @@ let mockHeading = 0;
 let mockWasDead = false;
 const MOCK_DEATH_PERIOD_MS = 45000;   // how often the mock dies
 
+/*
+ * HUD colours as GET_HUD_COLOUR actually reports them, so the mock agrees with
+ * the plugin. Michael and Franklin are observed from the live feed; Trevor has
+ * not been seen yet and is the one value here still to be confirmed.
+ *
+ * Guessing these was already wrong once: Michael was assumed to be a pale
+ * #9bc3e8 and is really a much stronger #65b4d4.
+ */
+const MOCK_CHARACTERS = [
+  { name: "Michael",  colour: "#65b4d4" },
+  { name: "Franklin", colour: "#abedab" },
+  { name: "Trevor",   colour: "#f0b48f" }   // unconfirmed
+];
+
 function mockPos(theta) {
   const R = 1400 * (1 + 0.12 * Math.sin(3 * theta));
   return { x: 200 + R * Math.cos(theta), y: 200 + R * Math.sin(theta), R };
@@ -672,6 +703,10 @@ function mockTick() {
     streetName:     place.street,
     crossingStreet: place.crossing,
     zoneName:       place.zone,
+    // Cycles the three protagonists, with the game's own HUD colours, so the
+    // avatar can be exercised without switching character in game.
+    character:      MOCK_CHARACTERS[Math.floor(t / 15000) % MOCK_CHARACTERS.length].name,
+    characterColor: MOCK_CHARACTERS[Math.floor(t / 15000) % MOCK_CHARACTERS.length].colour,
     wantedLevel: Math.floor(t / 25000) % 6,
     isDead:     dead && !arrestTurn,
     isArrested: dead && arrestTurn,
@@ -1241,6 +1276,7 @@ function updateHud() {
   // The clock applies on foot as much as in a vehicle, so it sits above the
   // guard below rather than inside it.
   updateClock(s);
+  updateAvatar(s);
 
   /*
    * Speed, revs and the tell-tales are all vehicle instruments, so the whole
@@ -1794,6 +1830,57 @@ async function fetchPlateArt() {
   }
 }
 
+/*
+ * The protagonist portraits — the same pictures the in-game phone shows
+ * against a contact. Null until loaded, and it may stay null: Rockstar
+ * artwork, extracted from your own install and never committed.
+ */
+let portraitArt = null;
+
+async function fetchPortraits() {
+  try {
+    const r = await fetch(serverBase() + '/portraits/portraits.json', { cache: 'no-store' });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * The character avatar: their phone portrait, ringed in the colour the game
+ * uses for them. Both come from the game — the colour is read with
+ * GET_HUD_COLOUR rather than being a guess at "Franklin green".
+ *
+ * Without the artwork it falls back to an initial on that same colour, and
+ * without a recognised character to a neutral "?".
+ */
+function updateAvatar(s) {
+  const el = $('#avatar');
+  const name = s.character || null;
+  const known = !!name;
+
+  el.classList.toggle('known', known);
+  if (s.characterColor) el.style.setProperty('--char-colour', s.characterColor);
+  else el.style.removeProperty('--char-colour');
+
+  const hasArt = !!(known && portraitArt && portraitArt[name]);
+  el.classList.toggle('has-portrait', hasArt);
+  if (hasArt) el.style.setProperty('--char-portrait', 'url("portraits/' + portraitArt[name] + '")');
+  else el.style.removeProperty('--char-portrait');
+
+  /*
+   * The player arrow takes the same colour, set on the root so the marker
+   * picks it up wherever Leaflet has parented it. Falls back to the app accent
+   * for a character the game does not name.
+   */
+  if (s.characterColor) document.documentElement.style.setProperty('--player-colour', s.characterColor);
+  else document.documentElement.style.removeProperty('--player-colour');
+
+  $('#avatarInitial').textContent = known ? name.charAt(0) : '?';
+  el.title = known ? name : 'Character';
+}
+
 /** The setup tool's manifest, or null if setup has not been run. */
 async function fetchManifest() {
   try {
@@ -1874,6 +1961,7 @@ async function init() {
   // Independent of the map, and not worth blocking it: if the artwork is not
   // there the plate simply draws itself.
   fetchPlateArt().then(a => { plateArt = a; });
+  fetchPortraits().then(a => { portraitArt = a; });
 
   initMap(manifestHasTiles(manifest) ? manifest.height : 0);
   wireUi();

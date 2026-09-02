@@ -213,18 +213,32 @@ body.ui-hidden .panel { display: none; }
 }
 .icon-btn[aria-pressed="true"]:hover { background: #6bcfff; border-color: #6bcfff; }
 
+/*
+ * The character avatar: their phone portrait, ringed in the colour the game
+ * uses for them. Those HUD colours are pale by design, so the ring reads well
+ * against the dark card while dark text reads well on top of the colour when
+ * there is no portrait to show.
+ */
 .avatar {
   display: grid;
   place-items: center;
   width: 40px; height: 40px;
-  border-radius: 50%;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  border: 2px solid var(--char-colour, var(--line));
+  background-color: var(--char-colour, var(--panel-2));
+  background-image: var(--char-portrait);
+  background-size: cover;
+  /* The portraits are head-and-shoulders, so bias upward or the circle crops
+     the face and keeps the chest. */
+  background-position: center 22%;
   box-shadow: var(--shadow);
-  font-weight: 700;
-  color: var(--muted);
+  font: 700 17px/1 system-ui, sans-serif;
+  color: #10141a;
   overflow: hidden;
 }
+/* No recognised character: nothing to colour, so stay neutral. */
+.avatar:not(.known) { color: var(--muted); }
+.avatar.has-portrait #avatarInitial { display: none; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
 
 /* ------------------------------------------------------------------ */
@@ -238,16 +252,6 @@ body.ui-hidden .panel { display: none; }
   backdrop-filter: blur(6px);
 }
 [hidden] { display: none !important; }
-
-/* Card text runs about 20% larger than a desktop app would use — this is read
-   from a sofa, not from a desk. */
-.cap {
-  display: block;
-  font-size: 11px;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
 
 /* Vehicle */
 .vehicle-card { padding: 10px 15px; min-width: 165px; }
@@ -425,15 +429,24 @@ body.ui-hidden .panel { display: none; }
     var(--bad) 0 2px, transparent 2px 5px);
   opacity: .85;
 }
-
-/* Control stack */
 /*
- * Clearance for the hide-UI button, which sits below this stack and outside
- * #hud. It belongs on the stack alone: padding the whole corner lifted the
- * speedometer too, leaving it hovering while every other card sat on the
- * bottom line.
+ * Control stack.
+ *
+ * The margin is clearance for the hide-UI button, which sits below this stack
+ * and outside #hud. It belongs on the stack alone: padding the whole corner
+ * lifted the speedometer too, leaving it hovering while every other card sat
+ * on the bottom line.
+ *
+ * The flex and the gap are not decoration. Without them the buttons stack as
+ * plain blocks with their edges touching, which is most obvious when two
+ * adjacent ones are lit and read as a single block.
  */
-.controls { margin-bottom: 46px; }
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 46px;
+}
 
 /* Warning lights, as a cluster shows them: always present, lit by state, so
    the row never reflows. */
@@ -450,7 +463,9 @@ body.ui-hidden .panel { display: none; }
   opacity: .35;
   transition: color .15s linear, opacity .15s linear;
 }
-.status-row svg.on      { color: var(--good); opacity: 1; }
+/* White rather than green for the healthy state: "all normal" reads better as
+   plain white, and it keeps green free to mean something. */
+.status-row svg.on      { color: #f2f5f8; opacity: 1; }
 .status-row svg.beam    { color: var(--accent); opacity: 1; }
 .status-row svg.caution { color: var(--star); opacity: 1; }
 .status-row svg.warn    { color: var(--bad); opacity: 1; }
@@ -637,9 +652,23 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
   width: 30px; height: 30px;
   display: block;
   transform-origin: 50% 50%;
-  filter: drop-shadow(0 0 4px rgba(0, 0, 0, .9));
+  /*
+   * A white glow, outermost, so the arrow separates from a trail line of a
+   * similar hue — three of the six trail colours sit within about 12 degrees
+   * of a character colour, and this is what makes that not matter. The dark
+   * shadow underneath keeps it readable over pale roads.
+   */
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .65))
+          drop-shadow(0 0 4px rgba(255, 255, 255, .95));
 }
-.player-marker .body { fill: var(--accent); stroke: #06121a; stroke-width: 1.4; }
+/* Tinted to whoever is being played, falling back to the app accent when the
+   character is not one the game names. The white edge is part of the same
+   separation as the glow. */
+.player-marker .body {
+  fill: var(--player-colour, var(--accent));
+  stroke: #ffffff;
+  stroke-width: 1.6;
+}
 
 .cal-pin {
   display: grid;

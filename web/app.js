@@ -147,13 +147,24 @@ const TRAIL_CASING_EXTRA = 4;
  * Hues are spread widely and kept saturated, because the map itself is almost
  * entirely desaturated greys and tans — anything muted disappears into it.
  */
+/*
+ * Hues chosen to sit apart from each other, not just to look nice. The
+ * closest pair is red and yellow at 35 degrees, which the eye separates
+ * easily; everything else is 44 degrees or more.
+ *
+ * Three of them land near a character colour — green near Franklin, blue near
+ * Michael, yellow near Trevor, all within about 12 degrees. That is tolerable
+ * because the trail is fully saturated where the HUD colours are not, and
+ * because the player arrow carries a white glow that separates it from any
+ * line it happens to be sitting on.
+ */
 const TRAIL_COLOURS = {
-  foot:  '#ffd23f',   // amber
-  car:   '#00c8ff',   // cyan
-  bike:  '#ff4fa3',   // magenta
-  boat:  '#00e58a',   // spring green
-  air:   '#b57bff',   // violet
-  other: '#ff7a45'    // orange
+  car:   '#ffd23f',   // yellow
+  foot:  '#3ddc5a',   // green
+  boat:  '#2f9dff',   // blue
+  air:   '#b57bff',   // purple
+  bike:  '#ff2a2a',   // red
+  other: '#ff4de0'    // magenta
 };
 
 const TRAIL_LABELS = {

@@ -1350,14 +1350,30 @@ function updateHud() {
     const plate = $('#vehiclePlate');
     $('#vehiclePlateNumber').textContent = s.licensePlate || '';
 
-    // Wear whichever design the vehicle actually has, falling back to the
-    // default San Andreas plate for a style we do not know.
+    /*
+     * Wear whichever design the vehicle actually has.
+     *
+     * The real artwork is preferred when the setup tool has extracted it: the
+     * banner, stickers and rivets are then the game's own, and all we add is
+     * the registration in our own font, in the colour the style calls for.
+     * Without it, fall back to drawing an approximation in CSS.
+     */
+    const art = plateArt && plateArt[s.plateStyle];
     const ps = PLATE_STYLES[s.plateStyle] || PLATE_DEFAULT;
-    plate.style.setProperty('--plate-bg', ps.bg);
-    plate.style.setProperty('--plate-edge', ps.edge);
-    plate.style.setProperty('--plate-ink', ps.ink);
-    plate.style.setProperty('--plate-band', ps.band);
-    $('#plateState').textContent = ps.text;
+    plate.classList.toggle('has-art', !!art);
+
+    if (art) {
+      plate.style.setProperty('--plate-img', 'url("plates/' + art.file + '")');
+      plate.style.setProperty('--plate-bg', art.bg);
+      plate.style.setProperty('--plate-ink', art.ink);
+    } else {
+      plate.style.removeProperty('--plate-img');
+      plate.style.setProperty('--plate-bg', ps.bg);
+      plate.style.setProperty('--plate-edge', ps.edge);
+      plate.style.setProperty('--plate-ink', ps.ink);
+      plate.style.setProperty('--plate-band', ps.band);
+      $('#plateState').textContent = ps.text;
+    }
     plate.hidden = !s.licensePlate;
   } else {
     vehicleCard.hidden = true;
@@ -1757,6 +1773,26 @@ function serverBase() {
   return (settings.server || '').trim().replace(/\/+$/, '');
 }
 
+/*
+ * The real plate artwork, extracted from the game by the setup tool.
+ *
+ * Null until it loads, and it may stay null: the artwork is Rockstar's, so it
+ * is never committed and only exists once the ripper has been run against your
+ * own install. The CSS-drawn plate in PLATE_STYLES is the fallback for that,
+ * and for any style the artwork does not cover.
+ */
+let plateArt = null;
+
+async function fetchPlateArt() {
+  try {
+    const r = await fetch(serverBase() + '/plates/plates.json', { cache: 'no-store' });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) {
+    return null;
+  }
+}
+
 /** The setup tool's manifest, or null if setup has not been run. */
 async function fetchManifest() {
   try {
@@ -1833,6 +1869,11 @@ async function init() {
   // tiles decides which CRS the map must be created with, and that cannot be
   // changed afterwards.
   const manifest = await fetchManifest();
+
+  // Independent of the map, and not worth blocking it: if the artwork is not
+  // there the plate simply draws itself.
+  fetchPlateArt().then(a => { plateArt = a; });
+
   initMap(manifestHasTiles(manifest) ? manifest.height : 0);
   wireUi();
 

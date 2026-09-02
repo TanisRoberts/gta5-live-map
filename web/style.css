@@ -699,3 +699,37 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
 .clock.night svg { color: #9fc4ff; }
 .clock.dawn  svg,
 .clock.dusk  svg { color: #ff9a4d; }
+
+/*
+ * With the real artwork, the plate becomes a picture with the registration
+ * written over it. The banner, stickers and rivets are all in the image, so
+ * the CSS state text is not drawn — and the number sits in the blank lower
+ * area the artwork leaves for it, at 256x128 like every plate texture.
+ */
+.plate.has-art {
+  display: block;
+  position: relative;
+  width: 158px;
+  aspect-ratio: 256 / 128;
+  padding: 0;
+  border: 0;
+  /* Separate longhands: only the last layer of a background shorthand may
+     carry a colour, so passing one as a second layer silently computed to
+     "none" and left the plate transparent behind the artwork. */
+  background-color: var(--plate-bg, #d8d8d8);
+  background-image: var(--plate-img);
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+}
+.plate.has-art .plate-state { display: none; }
+.plate.has-art .plate-number {
+  position: absolute;
+  left: 5%; right: 5%;
+  top: 64%;
+  transform: translateY(-50%);
+  text-align: center;
+  font-size: 23px;
+  letter-spacing: .04em;
+}

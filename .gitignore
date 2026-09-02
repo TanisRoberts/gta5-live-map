@@ -42,3 +42,7 @@ map-out/
 
 # Map installed by the setup tool (generated, user-specific)
 web/map/
+
+# Plate artwork extracted by the setup tool (generated, user-specific).
+# Same rule as the map: it is Rockstar's, it stays on your machine.
+web/plates/

@@ -7,6 +7,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Xml.Linq;
 using CodeWalker.GameFiles;
 using CodeWalker.Utils;
@@ -97,6 +98,8 @@ namespace GtaLiveMap.TileRipper
                 string find = Arg(args, "--find", null);
                 string dump = Arg(args, "--dump", null);
                 string textures = Arg(args, "--textures", null);
+                bool plates = HasFlag(args, "--plates");
+                if (plates) return ExtractPlates(outDir);
                 if (find != null || dump != null || textures != null)
                     return Probe(find, dump, textures, outDir);
 
@@ -262,6 +265,197 @@ namespace GtaLiveMap.TileRipper
                 Console.WriteLine("Wrote " + outFile + " (" + data.Length + " bytes)");
             }
             return 0;
+        }
+
+        /// <summary>
+        /// The thirteen number-plate designs, in LicensePlateStyle order.
+        ///
+        /// The base game ships plate01..plate05 plus yankton_plate, and the
+        /// 2023 patch adds plate_mod_01..07 -- six then seven, which is exactly
+        /// the six base enum values followed by the seven Enhanced-only ones.
+        /// The order is positional, so the extraction prints every sampled
+        /// colour and the mapping can be checked against the names rather than
+        /// taken on trust: style 1 is YellowOnBlack, so plate02 had better come
+        /// out black.
+        /// </summary>
+        private static readonly string[] PlateStyleNames =
+        {
+            "BlueOnWhite2", "YellowOnBlack", "YellowOnBlue", "BlueOnWhite1",
+            "BlueOnWhite3", "NorthYankton", "ECola", "LasVenturas",
+            "LibertyCity", "LSCarMeet", "LSPanic", "LSPounders", "Sprunk"
+        };
+
+        private static readonly string[] PlateTextureNames =
+        {
+            "plate01", "plate02", "plate03", "plate04", "plate05", "yankton_plate",
+            "plate_mod_01", "plate_mod_02", "plate_mod_03", "plate_mod_04",
+            "plate_mod_05", "plate_mod_06", "plate_mod_07"
+        };
+
+        /// <summary>
+        /// Extracts the plate artwork to PNG and writes plates.json describing
+        /// each one.
+        ///
+        /// The artwork belongs to Rockstar, so it goes to the local output
+        /// folder and is never committed -- the same rule the map image lives
+        /// under. The client draws the number itself in its own font, so what
+        /// is needed from the game is the background and a colour to write in.
+        /// </summary>
+        private static int ExtractPlates(string outDir)
+        {
+            YtdFile best = null;
+            int bestCount = -1;
+
+            // Whichever dictionary holds the most of them: the base game has
+            // six, the 2023 patch has all thirteen.
+            foreach (RpfFile rpf in _mgr.AllRpfs)
+            {
+                if (rpf.AllEntries == null) continue;
+                foreach (RpfEntry e in rpf.AllEntries)
+                {
+                    if (e.Path == null) continue;
+                    if (!e.Path.EndsWith("vehshare.ytd", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    RpfFileEntry fe = e as RpfFileEntry;
+                    if (fe == null) continue;
+
+                    YtdFile ytd = new YtdFile();
+                    try { ytd.Load(_mgr.GetFileData(e.Path), fe); }
+                    catch (Exception ex) { Console.WriteLine("  skipped " + e.Path + ": " + ex.Message); continue; }
+                    if (ytd.TextureDict == null || ytd.TextureDict.Dict == null) continue;
+
+                    int found = 0;
+                    for (int i = 0; i < PlateTextureNames.Length; i++)
+                        if (FindTexture(ytd, PlateTextureNames[i]) != null) found++;
+
+                    if (found > bestCount) { bestCount = found; best = ytd; }
+                    if (bestCount == PlateTextureNames.Length) break;
+                }
+                if (bestCount == PlateTextureNames.Length) break;
+            }
+
+            if (best == null)
+            {
+                Console.Error.WriteLine("No vehshare.ytd with plate textures found.");
+                return 2;
+            }
+            Console.WriteLine("Found " + bestCount + " of " + PlateTextureNames.Length + " plate textures.");
+
+            string dir = Path.Combine(outDir, "plates");
+            Directory.CreateDirectory(dir);
+
+            StringBuilder json = new StringBuilder();
+            json.Append("{\n");
+            int written = 0;
+
+            for (int i = 0; i < PlateTextureNames.Length; i++)
+            {
+                Texture tex = FindTexture(best, PlateTextureNames[i]);
+                if (tex == null)
+                {
+                    Console.WriteLine("  " + PlateStyleNames[i] + ": not present");
+                    continue;
+                }
+
+                byte[] px = DDSIO.GetPixels(tex, 0);
+                if (px == null)
+                {
+                    Console.WriteLine("  " + PlateStyleNames[i] + ": could not decode");
+                    continue;
+                }
+
+                string file = PlateStyleNames[i] + ".png";
+                using (Bitmap bmp = new Bitmap(tex.Width, tex.Height, PixelFormat.Format32bppArgb))
+                {
+                    BitmapData bits = bmp.LockBits(new Rectangle(0, 0, tex.Width, tex.Height),
+                                                   ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                    Marshal.Copy(px, 0, bits.Scan0, Math.Min(tex.Width * tex.Height * 4, px.Length));
+                    bmp.UnlockBits(bits);
+                    bmp.Save(Path.Combine(dir, file), ImageFormat.Png);
+                }
+
+                int br, bgc, bb;
+                SamplePlateBackground(px, out br, out bgc, out bb);
+                string bg = Hex(br, bgc, bb);
+                string ink = InkFor(PlateStyleNames[i], br, bgc, bb);
+
+                if (written++ > 0) json.Append(",\n");
+                json.Append("  \"").Append(PlateStyleNames[i]).Append("\": { \"file\": \"")
+                    .Append(file).Append("\", \"bg\": \"").Append(bg)
+                    .Append("\", \"ink\": \"").Append(ink).Append("\" }");
+
+                Console.WriteLine("  " + PlateStyleNames[i].PadRight(14) + " <- " +
+                                  PlateTextureNames[i].PadRight(13) + " bg " + bg + "  ink " + ink);
+            }
+
+            json.Append("\n}\n");
+            File.WriteAllText(Path.Combine(dir, "plates.json"), json.ToString());
+            Console.WriteLine("Wrote " + Path.Combine(dir, "plates.json"));
+            return 0;
+        }
+
+        private static Texture FindTexture(YtdFile ytd, string name)
+        {
+            foreach (Texture t in ytd.TextureDict.Dict.Values)
+                if (string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase)) return t;
+            return null;
+        }
+
+        /// <summary>
+        /// The plate background, taken as the most common colour in the
+        /// artwork, since most of a blank plate is background.
+        /// </summary>
+        private static void SamplePlateBackground(byte[] px, out int r, out int g, out int b)
+        {
+            Dictionary<int, int> counts = new Dictionary<int, int>();
+            for (int i = 0; i + 3 < px.Length; i += 4)
+            {
+                // Quantised, so near-identical shades count together.
+                int key = ((px[i + 2] >> 3) << 10) | ((px[i + 1] >> 3) << 5) | (px[i] >> 3);
+                int c;
+                counts.TryGetValue(key, out c);
+                counts[key] = c + 1;
+            }
+
+            int bestKey = 0, bestCount = -1;
+            foreach (KeyValuePair<int, int> kv in counts)
+                if (kv.Value > bestCount) { bestCount = kv.Value; bestKey = kv.Key; }
+
+            r = ((bestKey >> 10) & 31) << 3;
+            g = ((bestKey >> 5) & 31) << 3;
+            b = (bestKey & 31) << 3;
+        }
+
+        /// <summary>
+        /// The colour to write the registration in.
+        ///
+        /// This deliberately does NOT come from the artwork. The characters are
+        /// not in the plate texture at all -- the game draws them from a
+        /// separate font atlas -- so there is nothing there to sample. Trying
+        /// anyway returned white for YellowOnBlack, having found the border
+        /// rather than any lettering.
+        ///
+        /// Rockstar named five of the base styles after their own colours,
+        /// which is better evidence than a sample would have been. North
+        /// Yankton is blue on white like the rest of the base set. For the
+        /// seven branded plates the name says nothing, so the choice is made
+        /// for contrast against the background that WAS measured.
+        /// </summary>
+        private static string InkFor(string style, int r, int g, int b)
+        {
+            if (style.StartsWith("BlueOnWhite", StringComparison.Ordinal)) return "#17307d";
+            if (style.StartsWith("YellowOn", StringComparison.Ordinal)) return "#f5c518";
+            if (style == "NorthYankton") return "#1d4c86";
+
+            double lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0;
+            return lum < 0.5 ? "#f4f4f2" : "#14141a";
+        }
+
+        private static string Hex(int r, int g, int b)
+        {
+            return "#" + Math.Min(255, r).ToString("x2") +
+                         Math.Min(255, g).ToString("x2") +
+                         Math.Min(255, b).ToString("x2");
         }
 
         /// <summary>

@@ -251,6 +251,8 @@ namespace GtaLiveMap
             Vehicle vehicle = inVehicle ? ped.CurrentVehicle : null;
 
             float speed;
+            float maxSpeed = 0f;
+            int gear = 0;
             string vehicleName = null;
             string vehicleClass = null;
             string vehicleColor = null;
@@ -259,6 +261,17 @@ namespace GtaLiveMap
             if (vehicle != null)
             {
                 speed = vehicle.Speed;
+
+                // The speedometer scales its bar to the vehicle's own top speed,
+                // so a Sanchez and a Super fill it at very different real speeds.
+                //
+                // Via the native, not Entity.MaxSpeed — that property is
+                // write-only (it sets a limiter), and reading it does not
+                // compile. This returns m/s, matching Speed, so the ratio needs
+                // no conversion.
+                maxSpeed = Function.Call<float>(Hash.GET_VEHICLE_ESTIMATED_MAX_SPEED, vehicle);
+                gear = vehicle.CurrentGear;
+
                 vehicleName = vehicle.LocalizedName;
                 vehicleClass = vehicle.ClassType.ToString();
 
@@ -301,6 +314,8 @@ namespace GtaLiveMap
             sb.Append(",\"z\":").Append(Json.Number(position.Z));
             sb.Append(",\"heading\":").Append(Json.Number(heading));
             sb.Append(",\"speed\":").Append(Json.Number(speed));
+            sb.Append(",\"maxSpeed\":").Append(Json.Number(maxSpeed));
+            sb.Append(",\"gear\":").Append(Json.Number(gear));
             sb.Append(",\"inVehicle\":").Append(Json.Bool(inVehicle));
             sb.Append(",\"vehicleDisplayName\":").Append(Json.String(vehicleName));
             sb.Append(",\"vehicleClass\":").Append(Json.String(vehicleClass));

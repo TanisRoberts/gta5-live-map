@@ -8,8 +8,8 @@
     is pressed (Insert by default, set in ScriptHookVDotNet.ini). That key has
     to reach the game window, so this brings GTA V to the foreground first.
 
-    It will steal focus. That is unavoidable — the game only sees the key if it
-    is focused — but the script refuses to send anything unless GTA V really is
+    It will steal focus. That is unavoidable -- the game only sees the key if it
+    is focused -- but the script refuses to send anything unless GTA V really is
     the foreground window, so a stray Insert cannot land in whatever you were
     typing in.
 
@@ -26,7 +26,10 @@ param(
     [string] $Key = '{INSERT}',
 
     # Process to target. Enhanced and Legacy use different executable names.
-    [string[]] $ProcessNames = @('GTA5_Enhanced', 'GTA5')
+    [string[]] $ProcessNames = @('GTA5_Enhanced', 'GTA5'),
+
+    # Port the plugin serves on. Used only to verify the reload actually took.
+    [int] $Port = 8088
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,7 +66,7 @@ $shell.AppActivate($proc.Id) | Out-Null
 Start-Sleep -Milliseconds 500
 
 # Only send once the game genuinely has focus. Without this the key would go to
-# whatever window did — Insert is harmless in most places, but "most" is not a
+# whatever window did -- Insert is harmless in most places, but "most" is not a
 # good enough reason to fire keystrokes blind.
 $fg = [Fg]::GetForegroundWindow()
 if ($fg -ne $proc.MainWindowHandle) {
@@ -71,5 +74,42 @@ if ($fg -ne $proc.MainWindowHandle) {
     exit 1
 }
 
+# The plugin's timestamp counts from ITS start, so a reload resets it. Read it
+# first, so we can tell afterwards whether anything actually happened.
+function Get-PluginTimestamp {
+    try {
+        $r = Invoke-WebRequest -Uri "http://localhost:$Port/pos" -TimeoutSec 2 -UseBasicParsing
+        if ($r.Content -match '"t"\s*:\s*(\d+)') { return [int64]$Matches[1] }
+    } catch { }
+    return $null
+}
+
+$before = Get-PluginTimestamp
+
 [System.Windows.Forms.SendKeys]::SendWait($Key)
-Write-Host "Sent $Key to GTA V. Scripts should reload." -ForegroundColor Green
+Write-Host "Sent $Key to GTA V."
+
+# Sending a key is not the same as the game acting on it. A paused game does not
+# tick, so it never sees the reload -- and reporting success there would be a lie
+# that costs an entire debugging session.
+if ($null -eq $before) {
+    Write-Host "The feed is not answering, so the reload could not be verified." -ForegroundColor Yellow
+    exit 0
+}
+
+Start-Sleep -Seconds 2
+$after = Get-PluginTimestamp
+
+if ($null -ne $after -and $after -lt $before) {
+    Write-Host "Plugin reloaded (timestamp reset $before -> $after)." -ForegroundColor Green
+    exit 0
+}
+
+if ($null -ne $after -and $after -eq $before) {
+    Write-Warning "The plugin is not ticking -- the game is almost certainly PAUSED."
+    Write-Warning "Unpause GTA V and run this again; a paused game never sees the key."
+    exit 2
+}
+
+Write-Warning "Timestamp did not reset ($before -> $after). The reload may not have taken."
+exit 2

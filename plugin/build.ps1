@@ -3,7 +3,7 @@
     Builds LiveMap.dll using the in-box .NET Framework C# compiler.
 
 .DESCRIPTION
-    Deliberately avoids needing the .NET SDK, Visual Studio or MSBuild — the
+    Deliberately avoids needing the .NET SDK, Visual Studio or MSBuild -- the
     csc.exe shipped with .NET Framework 4.8 is enough for a library this size.
     That does mean C# 5 syntax only (no string interpolation, no ?., no
     expression-bodied members).

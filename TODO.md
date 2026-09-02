@@ -1,7 +1,7 @@
 # TODO
 
-Future expansion, in priority order as raised. Nothing here is started — see the
-stage checklist in [README.md](README.md) for what is actually built.
+Future expansion, in priority order as raised. Items marked **DONE** have
+shipped; see the stage checklist in [README.md](README.md) for the overall state.
 
 ---
 
@@ -128,25 +128,25 @@ Needs a legend, or the colours mean nothing.
 
 ## 5. Tiled base map, and switchable layers
 
-### 5a. Move from a single image to tiles
+### 5a. Move from a single image to tiles — DONE
 
-Replace `L.imageOverlay` with `L.tileLayer` so only the visible tiles are
-fetched. A 4096×4096 base map decodes to ~67 MB of RGBA in the browser no matter
-how small the file is on disk, and `imageOverlay` holds all of it at every zoom —
-which matters most on the phone this is meant to be viewed on.
+The setup tool writes a `{z}/{x}/{y}` pyramid (about 2,000 tiles over six
+levels) and the client uses `L.tileLayer`. An 8192-wide map is a 19 MB PNG but
+roughly 400 MB of RGBA once decoded, and an image overlay holds all of it at
+every zoom.
 
-The calibration maths is unaffected: `CRS.Simple` and the game→pixel transform
-work the same against a tile pyramid.
+Latitude and longitude stay in full-resolution pixels, so the calibration
+transform is unchanged. The plugin's HTTP server already served static files, so
+it serves tiles with no change.
 
-Two sources of tiles, and the pipeline should not care which:
+Two Leaflet traps worth remembering, both of which fail **silently**:
 
-- The game's own minimap textures are **already tiled** at native resolution with
-  no HUD baked in. Extracting them needs OpenIV or CodeWalker.
-- Anything else (a pause-map screenshot, a community render) needs slicing into a
-  `{z}/{x}/{y}` pyramid. Worth writing a small slicer using `System.Drawing` —
-  no new dependencies.
-
-The plugin's HTTP server already serves static files, so it serves tiles as-is.
+- `minZoom`/`maxZoom` must be set on the **layer**, not just `minNativeZoom`.
+  The layer default `minZoom` is 0, and outside that range Leaflet discards the
+  tile zoom and renders nothing.
+- The CRS must be chosen when the map is **created**. Tiles need pixels
+  projected from the top-left; assigning `map.options.crs` later leaves the
+  cached pixel origin describing the old projection.
 
 ### 5b. Switchable layers
 
@@ -211,21 +211,30 @@ Once an image exists, it drops into the layer switcher (5b) and the tile pipelin
 (5a) with no new client work — assuming per-layer calibration is in place, since
 it will not share dimensions with the road map.
 
-## 8. Vectorised view
+## 8. Vectorised view — DONE (rendered server-side, not vectors in the browser)
 
-A clean vector rendering — roads, water, district boundaries as paths rather than
-a raster image.
+The map is now **drawn from the game's own minimap geometry** rather than
+extracted from its raster tiles, which removes the resolution ceiling. See
+[tools/tile-ripper](tools/tile-ripper/README.md) for the format details.
 
-Genuinely different from items 5 and 7, and the most work of the three: it is not
-an image at all. It would mean deriving road geometry and coastlines and drawing
-them as GeoJSON through Leaflet.
+I had scoped this as the largest item in the backlog on the assumption that road
+geometry would have to be *derived*. It did not: `x64e.rpf\levels\gta5\minimap.rpf`
+holds it directly, with colour baked per vertex, and CodeWalker parses it. The
+whole map is ~145,000 triangles and renders in about two seconds.
 
-What it buys, and why it might be worth it despite the effort:
+### What was NOT done, and is still worth having
 
-- Crisp at every zoom, with no tile pyramid and no memory cost.
-- Tiny compared with any raster map.
-- Styleable — dark mode that actually matches the UI (item 2), or a night theme.
-- The road geometry needed here is the **same data routing needs** (item 3c). If
-  vectorising ever happens, routing becomes far more tractable as a side effect.
+Rendering happens at setup time and produces raster tiles. Vectors never reach
+the browser, so these benefits are still unclaimed:
 
-That shared dependency is the argument for doing 8 and 3c together, or not at all.
+- **Restyling without re-running setup.** Colours are baked into the tiles, so a
+  night theme or a palette matching item 2 currently means a re-render.
+- **Crispness beyond the top zoom level.** Real vectors have no top level.
+
+Both would mean exporting geometry as GeoJSON and drawing it in Leaflet. Much
+smaller now that the parsing and projection already exist — the remaining work
+is the export and the client rendering.
+
+**The routing link still stands.** This geometry is the road data item 3c needs,
+and it is now parsed and projected into world coordinates. Routing is materially
+more tractable than when that item was written.

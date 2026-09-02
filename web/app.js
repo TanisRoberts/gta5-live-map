@@ -36,8 +36,14 @@ const STALE_MS       = 1500;  // no sample this long => feed considered dead
 const FETCH_TIMEOUT  = 2000;
 const TRAIL_MIN_MOVE = 3;     // game units between trail points
 
-// Zoom to settle on when following the player and nothing better is remembered.
-const DEFAULT_FOLLOW_ZOOM = -1;
+/*
+ * Separate follow zooms for driving and walking. On foot you want to see the
+ * street you are on; at speed you want to see what is coming. Switching mode
+ * snaps to the relevant one, which also discards any manual zoom — that is
+ * deliberate, so the two levels stay predictable.
+ */
+const ZOOM_VEHICLE = 0.5;
+const ZOOM_FOOT    = 2;
 
 /*
  * Trail styling.
@@ -133,7 +139,6 @@ const defaults = {
   mock:        false,
   server:      "",
   panelOpen:   null,     // null = decide from viewport width on first run
-  zoom:        null,     // remembered so a reload does not throw away your view
   transformSource: null  // "auto" (from the setup tool) or "manual"
 };
 
@@ -555,17 +560,6 @@ function initMap(tileHeight) {
   // Panning by hand means you want manual control.
   map.on('dragstart', () => { if (settings.follow) setFollow(false); });
 
-  // Remember the zoom, so a reload puts you back where you were looking rather
-  // than throwing you out to the whole island.
-  map.on('zoomend', () => {
-    // Ignore the framing fitBounds that runs before the first position is
-    // known. It fires zoomend too, and saving it would overwrite the very
-    // preference we are about to restore.
-    if (awaitingFirstFix) return;
-
-    const z = map.getZoom();
-    if (Number.isFinite(z) && z !== settings.zoom) { settings.zoom = z; save(); }
-  });
   map.on('click', onMapClick);
 
   // Window resize, phone rotation, panel show/hide — Leaflet caches the
@@ -608,7 +602,7 @@ function setMapTiles(base, manifest) {
     // layer's default minZoom is 0 — so with only minNativeZoom set, every
     // negative zoom renders nothing at all, silently.
     minZoom: -t.maxZoom,
-    maxZoom: 2,
+    maxZoom: 3,
     // Native levels run -maxZoom..0; allowing a little beyond lets Leaflet
     // scale the sharpest tiles up rather than refusing to zoom further.
     minNativeZoom: -t.maxZoom,
@@ -621,7 +615,7 @@ function setMapTiles(base, manifest) {
   overlay.bringToBack();
 
   map.setMinZoom(-t.maxZoom);
-  map.setMaxZoom(2);
+  map.setMaxZoom(3);
   map.setMaxBounds(imageBounds.pad(0.6));
   awaitingFirstFix = true;
   map.fitBounds(imageBounds);
@@ -769,6 +763,9 @@ let current = null;   // most recent interpolated state, for the HUD
  */
 let awaitingFirstFix = true;
 
+/** null until the first fix, so the first sample does not count as a change. */
+let lastInVehicle = null;
+
 /**
  * Advances the interpolated state.
  *
@@ -789,6 +786,8 @@ function sampleCurrent() {
   // record of where you went, not a drawing artefact — tying it to
   // requestAnimationFrame meant a hidden tab silently lost the whole route,
   // which is the opposite of what a breadcrumb trail is for.
+  pushTrail(s.x, s.y, trailCategory(s));
+
   return s;
 }
 
@@ -806,17 +805,34 @@ function frame() {
   if (!markerSvg && marker.getElement()) markerSvg = marker.getElement().querySelector('svg');
   if (markerSvg) markerSvg.style.transform = `rotate(${headingToCssDeg(s.heading).toFixed(1)}deg)`;
 
-  pushTrail(s.x, s.y, trailCategory(s));
+  // Getting in or out of a vehicle changes what you need to see: the street
+  // you are standing on, or what is coming at 80mph. Snapping to the relevant
+  // zoom also discards any manual zoom, which is intended — the two levels stay
+  // predictable rather than drifting with whatever you last scrolled to.
+  const inVehicle = !!s.inVehicle;
+  const modeChanged = lastInVehicle !== null && lastInVehicle !== inVehicle;
+  lastInVehicle = inVehicle;
 
   if (settings.follow) {
-    if (awaitingFirstFix) {
+    if (awaitingFirstFix || modeChanged) {
       awaitingFirstFix = false;
-      const z = Number.isFinite(settings.zoom) ? settings.zoom : DEFAULT_FOLLOW_ZOOM;
-      map.setView(ll, z, { animate: false });
+      map.setView(ll, modeZoom(inVehicle), { animate: modeChanged });
     } else {
+      // Otherwise leave the zoom alone, so scrolling still works.
       map.setView(ll, map.getZoom(), { animate: false });
     }
   }
+}
+
+/**
+ * Follow zoom for the current mode.
+ *
+ * Deliberately constants rather than persisted settings: there is no UI to
+ * change them, and a stored copy silently overrides any future retune — which
+ * it already did once. Item 1 adds real map controls; persist them then.
+ */
+function modeZoom(inVehicle) {
+  return inVehicle ? ZOOM_VEHICLE : ZOOM_FOOT;
 }
 
 function updateHud() {

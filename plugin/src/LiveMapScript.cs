@@ -260,6 +260,18 @@ namespace GtaLiveMap
             float heading = ped.Heading;
             int wantedLevel = player.Wanted.WantedLevel;
 
+            /*
+             * Death and arrest, so the client can break the trail rather than
+             * drawing a straight line from where you died to the hospital.
+             *
+             * Both are read here, at the moment they happen, because by the
+             * time the position jumps the player is already alive again and
+             * standing outside Pillbox with nothing left to say what occurred.
+             */
+            bool isDead = ped.IsDead || player.IsDead;
+            bool isArrested = ped.IsCuffed
+                || Function.Call<bool>(Hash.IS_PLAYER_BEING_ARRESTED, player);
+
             bool inVehicle = ped.IsInVehicle();
             Vehicle vehicle = inVehicle ? ped.CurrentVehicle : null;
 
@@ -412,6 +424,8 @@ namespace GtaLiveMap
             sb.Append(",\"crossingStreet\":").Append(Json.String(_crossingStreet));
             sb.Append(",\"zoneName\":").Append(Json.String(_zoneName));
             sb.Append(",\"wantedLevel\":").Append(Json.Number(wantedLevel));
+            sb.Append(",\"isDead\":").Append(Json.Bool(isDead));
+            sb.Append(",\"isArrested\":").Append(Json.Bool(isArrested));
             sb.Append(",\"gameHour\":").Append(Json.Number(gameHour));
             sb.Append(",\"gameMinute\":").Append(Json.Number(gameMinute));
             sb.Append(",\"t\":").Append(Json.Number(timestampMs));

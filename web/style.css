@@ -634,3 +634,23 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
   .speedo b { font-size: 20px; }
   .panel { width: calc(100vw - 20px); }
 }
+
+/* ------------------------------------------------------------------ */
+/* Trail events                                                        */
+/* ------------------------------------------------------------------ */
+/*
+ * Where a journey ended rather than continued. The trail breaks at these
+ * points, and without a marker the gap reads as a rendering fault rather than
+ * as something that happened.
+ */
+.trail-event {
+  display: grid;
+  place-items: center;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 2px solid #0b0e12;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .6);
+}
+.trail-event svg { width: 15px; height: 15px; fill: #0b0e12; }
+.trail-event.death  { background: var(--bad); }
+.trail-event.arrest { background: var(--accent); }

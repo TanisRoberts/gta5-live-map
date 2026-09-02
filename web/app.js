@@ -37,6 +37,19 @@ const FETCH_TIMEOUT  = 2000;
 const TRAIL_MIN_MOVE = 3;     // game units between trail points
 
 /*
+ * A respawn teleports you across the map, and joining those two points draws a
+ * line you never travelled. Anything further than this in one sample is taken
+ * as a jump rather than movement.
+ *
+ * The budget is generous on purpose: a throttled background tab can leave a
+ * second between samples, and a jet covers a lot of ground in a second. The
+ * floor stops a stationary sample being called a teleport by rounding.
+ */
+const TRAIL_JUMP_FLOOR = 120;   // game units
+const TRAIL_JUMP_FACTOR = 3;    // multiple of plausible travel in the gap
+const TRAIL_EVENT_MAX = 40;     // markers kept before the oldest is dropped
+
+/*
  * Separate follow zooms for driving and walking. On foot you want to see the
  * street you are on; at speed you want to see what is coming. Switching mode
  * snaps to the relevant one, which also discards any manual zoom — that is
@@ -485,6 +498,8 @@ let mockTimer   = null;
 let mockPrev    = null;
 let mockTheta   = 0;
 let mockHeading = 0;
+let mockWasDead = false;
+const MOCK_DEATH_PERIOD_MS = 45000;   // how often the mock dies
 
 function mockPos(theta) {
   const R = 1400 * (1 + 0.12 * Math.sin(3 * theta));
@@ -494,6 +509,21 @@ function mockPos(theta) {
 function mockTick() {
   const t = performance.now();
   const dt = mockPrev ? Math.min((t - mockPrev.t) / 1000, 0.25) : 0;
+
+  /*
+   * Die periodically, so the trail's break and its death marker can be tested
+   * without repeatedly getting killed in game. Dead is flagged for a moment at
+   * the spot, then the position jumps the way a hospital respawn does; every
+   * other cycle is an arrest instead, so both markers get exercised.
+   */
+  const inCycle = t % MOCK_DEATH_PERIOD_MS;
+  const dead = inCycle < 800;
+  const arrestTurn = Math.floor(t / MOCK_DEATH_PERIOD_MS) % 2 === 1;
+  if (!dead && mockWasDead) {
+    mockTheta += 2.1;        // the teleport
+    mockPrev = null;         // or the jump reads as an impossible speed
+  }
+  mockWasDead = dead;
 
   // Advance along the loop at a plausible ground speed, so the reported speed
   // and the distance actually covered always agree.
@@ -565,6 +595,8 @@ function mockTick() {
     crossingStreet: place.crossing,
     zoneName:       place.zone,
     wantedLevel: Math.floor(t / 25000) % 6,
+    isDead:     dead && !arrestTurn,
+    isArrested: dead && arrestTurn,
     gameHour:   Math.floor(gameMinutes / 60),
     gameMinute: gameMinutes % 60,
     t
@@ -681,6 +713,8 @@ function topLeftCrs(height) {
 let marker = null, markerSvg = null;
 let trailLayer = null;
 let trailPts = [];          // game-space points, each tagged with its category
+let eventLayer = null;      // death and arrest markers
+let trailEvents = [];       // {x, y, kind} for those markers
 let calLayer = null;
 
 function initMap(tileHeight) {
@@ -700,6 +734,8 @@ function initMap(tileHeight) {
   // A group rather than one polyline: the trail is drawn as a run of segments
   // so it can change colour wherever the vehicle type changes.
   trailLayer = L.layerGroup().addTo(map);
+  // Above the trail, so a marker is never hidden under the line it interrupts.
+  eventLayer = L.layerGroup().addTo(map);
 
   // Panning by hand means you want manual control.
   map.on('dragstart', () => { if (settings.follow) setFollow(false); });
@@ -858,10 +894,15 @@ function redrawTrail() {
   let start = 0;
   for (let i = 1; i <= trailPts.length; i++) {
     const ended = i === trailPts.length;
-    if (!ended && trailPts[i].cat === trailPts[start].cat) continue;
+    // A break marks a place we did not travel — a respawn, or a mission warp.
+    // It ends the run just like a colour change, but differently: a colour
+    // change is continuous, so its run reaches one point into the next to butt
+    // the colours together, whereas a break must stop short or we would draw
+    // the very line we are trying to avoid.
+    const broken = !ended && trailPts[i].brk;
+    if (!ended && !broken && trailPts[i].cat === trailPts[start].cat) continue;
 
-    // Overlap by one so consecutive runs share a vertex.
-    const run = trailPts.slice(start, ended ? i : i + 1);
+    const run = trailPts.slice(start, (ended || broken) ? i : i + 1);
     if (run.length >= 2) {
       const pts = run.map(p => gameToLatLng(p.x, p.y));
       const colour = TRAIL_COLOURS[trailPts[start].cat] || TRAIL_COLOURS.other;
@@ -883,19 +924,22 @@ function redrawTrail() {
   }
 }
 
-function pushTrail(x, y, cat) {
+function pushTrail(x, y, cat, brk) {
   const n = settings.trailLength;
   if (n <= 0) {
     if (trailPts.length) { trailPts = []; trailLayer.clearLayers(); }
+    if (trailEvents.length) { trailEvents = []; drawEvents(); }
     return;
   }
 
   const last = trailPts[trailPts.length - 1];
   // Always record a point when the category changes, however small the move,
   // or the colour boundary lands wherever the next 3-unit step happens to fall.
-  if (last && last.cat === cat && Math.hypot(x - last.x, y - last.y) < TRAIL_MIN_MOVE) return;
+  // A break must always be recorded, however small the step, or the trail
+  // would rejoin across the very gap it marks.
+  if (!brk && last && last.cat === cat && Math.hypot(x - last.x, y - last.y) < TRAIL_MIN_MOVE) return;
 
-  trailPts.push({ x, y, cat });
+  trailPts.push({ x, y, cat, brk: !!brk });
   while (trailPts.length > n) trailPts.shift();
   redrawTrail();
 }
@@ -926,6 +970,82 @@ let becameVisibleAt = 0;
  * stayed blank and no marker ever appeared, which is worse than saying nothing.
  * The HUD timer calls this too, so the readout is correct the moment you look.
  */
+/*
+ * Death and arrest latch, read at the moment they happen.
+ *
+ * By the time the position jumps you are already alive again and standing
+ * outside the hospital, so the sample that carries the jump says nothing about
+ * what caused it. These remember where you were when it started.
+ */
+let lastTrailFix = null;    // {x, y, t} of the previous recorded sample
+let pendingEvent = null;    // {x, y, kind} waiting for the jump to confirm it
+let wasDead = false, wasArrested = false;
+
+/**
+ * Decides whether this sample follows a teleport rather than movement, and
+ * places a death or arrest marker where the journey actually ended.
+ *
+ * Returns true when the trail should break before this point.
+ */
+function noteTrailJump(s) {
+  // Latch on the rising edge only: the flags stay true for the whole wasted
+  // sequence, and we want the spot where it began, not where it finished.
+  if (s.isDead && !wasDead) pendingEvent = { x: s.x, y: s.y, kind: 'death' };
+  else if (s.isArrested && !wasArrested) pendingEvent = { x: s.x, y: s.y, kind: 'arrest' };
+  wasDead = !!s.isDead;
+  wasArrested = !!s.isArrested;
+
+  const prev = lastTrailFix;
+  lastTrailFix = { x: s.x, y: s.y, t: s.t };
+  if (!prev) return false;
+
+  const gapSec = Math.max(0, (s.t - prev.t) / 1000);
+  const moved = Math.hypot(s.x - prev.x, s.y - prev.y);
+
+  // What could plausibly have been covered in that gap, at the speed we were
+  // told, with room to spare. Below this it is travel; above it, a teleport.
+  const plausible = Math.max(TRAIL_JUMP_FLOOR,
+                             (Math.abs(s.speed || 0) + 10) * gapSec * TRAIL_JUMP_FACTOR);
+  if (moved <= plausible) return false;
+
+  /*
+   * A jump with no latched cause is a mission warp or a fast travel. Break the
+   * line for it too — we still did not drive that route — but do not invent a
+   * death marker to explain it.
+   */
+  if (pendingEvent) {
+    trailEvents.push(pendingEvent);
+    while (trailEvents.length > TRAIL_EVENT_MAX) trailEvents.shift();
+    pendingEvent = null;
+    drawEvents();
+  }
+  return true;
+}
+
+/** Death and arrest markers, redrawn whole — there are only ever a handful. */
+function drawEvents() {
+  if (!eventLayer) return;
+  eventLayer.clearLayers();
+  // Tied to the trail's own visibility: these mark breaks in it, and a marker
+  // floating over a hidden trail explains nothing.
+  if (!settings.trailVisible || !settings.transform) return;
+
+  trailEvents.forEach(e => {
+    L.marker(gameToLatLng(e.x, e.y), {
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 500,
+      icon: L.divIcon({
+        className: '',
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+        html: '<div class="trail-event ' + e.kind + '">' +
+              '<svg viewBox="0 0 24 24"><use href="#i-' + e.kind + '"/></svg></div>'
+      })
+    }).addTo(eventLayer);
+  });
+}
+
 function sampleCurrent() {
   const s = sampleAt(performance.now() - renderDelayMs());
   if (!s) return null;
@@ -936,7 +1056,7 @@ function sampleCurrent() {
   // record of where you went, not a drawing artefact — tying it to
   // requestAnimationFrame meant a hidden tab silently lost the whole route,
   // which is the opposite of what a breadcrumb trail is for.
-  pushTrail(s.x, s.y, trailCategory(s));
+  pushTrail(s.x, s.y, trailCategory(s), noteTrailJump(s));
 
   return s;
 }
@@ -1217,8 +1337,8 @@ function calApply() {
   settings.transform = t;
   settings.transformSource = 'manual';   // survives a re-run of the setup tool
   save();
-  trailPts = [];
-  redrawTrail();
+  trailPts = []; trailEvents = [];
+  redrawTrail(); drawEvents();
   renderCal();
 
   // A north-up map image is scaled the same on both axes, so wildly different
@@ -1245,8 +1365,8 @@ function calReset() {
   pickingIndex = -1;
   document.body.classList.remove('picking');
   if (!settings.transform && marker) { marker.remove(); marker = null; markerSvg = null; }
-  trailPts = [];
-  redrawTrail();
+  trailPts = []; trailEvents = [];
+  redrawTrail(); drawEvents();
   renderCal();
   if (imageBounds && !settings.transform) map.fitBounds(imageBounds);
   toast(installedTransform
@@ -1296,7 +1416,7 @@ function wireUi() {
     settings.trailVisible = !settings.trailVisible;
     save();
     syncTrail();
-    redrawTrail();
+    redrawTrail(); drawEvents();
   });
 
   $('#btnRecentre').addEventListener('click', () => {
@@ -1411,7 +1531,7 @@ function wireUi() {
     $('#trailOut').value = trail.value;
     save();
     while (trailPts.length > settings.trailLength) trailPts.shift();
-    redrawTrail();
+    redrawTrail(); drawEvents();
   });
 
   // Legend, built from TRAIL_COLOURS so there is one source of truth.
@@ -1426,8 +1546,8 @@ function wireUi() {
   });
 
   $('#trailClear').addEventListener('click', () => {
-    trailPts = [];
-    redrawTrail();
+    trailPts = []; trailEvents = [];
+    redrawTrail(); drawEvents();
   });
 
   // Map image

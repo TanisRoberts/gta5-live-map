@@ -1278,8 +1278,9 @@ function updateHud() {
     colour.hidden = !s.vehicleColor;
     if (swatch) colour.style.setProperty('--swatch', swatch);
 
+    // The plate is a block of its own now, so the number goes inside it.
     const plate = $('#vehiclePlate');
-    plate.textContent = s.licensePlate || '';
+    $('#vehiclePlateNumber').textContent = s.licensePlate || '';
     plate.hidden = !s.licensePlate;
   } else {
     vehicleCard.hidden = true;

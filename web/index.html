@@ -81,7 +81,12 @@
       <b id="vehicleModel">&mdash;</b>
       <div class="vehicle-meta">
         <span id="vehicleColour" class="v-colour"></span>
-        <span id="vehiclePlate" class="plate"></span>
+      </div>
+      <!-- A San Andreas plate: blue on white with the state across the top,
+           which is the game's default style and the one you see most. -->
+      <div class="plate" id="vehiclePlate" hidden>
+        <span class="plate-state">San Andreas</span>
+        <span class="plate-number" id="vehiclePlateNumber"></span>
       </div>
     </div>
   </div>

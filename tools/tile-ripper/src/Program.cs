@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -48,7 +49,7 @@ namespace GtaLiveMap.TileRipper
 
             int width;
             if (!int.TryParse(Arg(args, "--width", "8192"), out width)) width = 8192;
-            width = Math.Max(1024, Math.Min(16384, width));
+            width = TilePyramid.SnapWidth(Math.Max(1024, Math.Min(16384, width)));
 
             if (string.IsNullOrEmpty(game))
             {
@@ -390,13 +391,42 @@ namespace GtaLiveMap.TileRipper
             string image = Path.Combine(mapDir, "gtav-map.png");
             File.Copy(composite, image, true);
 
-            var sb = new System.Text.StringBuilder();
-            sb.Append("{\n");
-            sb.Append("  \"image\": \"gtav-map.png\",\n");
-            sb.Append("  \"width\": ").Append(size.Width).Append(",\n");
-            sb.Append("  \"height\": ").Append(size.Height).Append(",\n");
-            sb.Append("  \"source\": \"GTA V ").Append(gen9 ? "Enhanced" : "Legacy").Append(" minimap tiles\",\n");
-            sb.Append("  \"generated\": \"").Append(DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")).Append("\"");
+            // Tiles, so the client fetches only what is on screen. A single
+            // 8192-wide map decodes to ~400 MB of RGBA in the browser and is
+            // held at every zoom; tiles make high resolution actually usable.
+            TilePyramid.Result tiles = null;
+            try
+            {
+                Console.WriteLine();
+                Console.WriteLine("Building tile pyramid...");
+                using (var bmp = new Bitmap(image))
+                {
+                    tiles = TilePyramid.Write(bmp, Path.Combine(mapDir, "tiles"), Console.WriteLine);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Not fatal: the client falls back to the single image.
+                Console.WriteLine("  tiling failed (" + ex.Message + ")");
+                Console.WriteLine("  the client will use the single image instead.");
+                tiles = null;
+            }
+
+            var parts = new List<string>
+            {
+                "  \"image\": \"gtav-map.png\"",
+                "  \"width\": " + size.Width,
+                "  \"height\": " + size.Height,
+                "  \"source\": \"GTA V " + (gen9 ? "Enhanced" : "Legacy") + " minimap\"",
+                "  \"generated\": \"" + DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") + "\""
+            };
+
+            if (tiles != null)
+            {
+                parts.Add("  \"tiles\": { \"path\": \"tiles/{z}/{x}/{y}.png\", \"tileSize\": " +
+                          TilePyramid.TileSize + ", \"maxZoom\": " + tiles.MaxZoom +
+                          ", \"count\": " + tiles.TileCount + " }");
+            }
 
             if (proj != null)
             {
@@ -404,29 +434,23 @@ namespace GtaLiveMap.TileRipper
                 // where lat counts UP from the image's bottom edge. The bitmap
                 // start is its north-west corner, so world Y decreases as the
                 // image row increases — which is where the flip is absorbed.
+                // Tiles keep lat/lng in full-resolution pixels, so this stays
+                // correct whether the client draws tiles or the single image.
                 double a = size.Width / proj.WorldW;
                 double c = size.Height / proj.WorldH;
                 double b = -proj.StartX * a;
                 double d = size.Height - proj.StartY * c;
 
-                sb.Append(",\n  \"transform\": { ");
-                sb.Append("\"a\": ").Append(N(a)).Append(", ");
-                sb.Append("\"b\": ").Append(N(b)).Append(", ");
-                sb.Append("\"c\": ").Append(N(c)).Append(", ");
-                sb.Append("\"d\": ").Append(N(d)).Append(" },\n");
-                sb.Append("  \"world\": { ");
-                sb.Append("\"minX\": ").Append(N(proj.StartX)).Append(", ");
-                sb.Append("\"maxX\": ").Append(N(proj.StartX + proj.WorldW)).Append(", ");
-                sb.Append("\"minY\": ").Append(N(proj.StartY - proj.WorldH)).Append(", ");
-                sb.Append("\"maxY\": ").Append(N(proj.StartY)).Append(" }\n");
-            }
-            else
-            {
-                sb.Append("\n");
+                parts.Add("  \"transform\": { \"a\": " + N(a) + ", \"b\": " + N(b) +
+                          ", \"c\": " + N(c) + ", \"d\": " + N(d) + " }");
+                parts.Add("  \"world\": { \"minX\": " + N(proj.StartX) +
+                          ", \"maxX\": " + N(proj.StartX + proj.WorldW) +
+                          ", \"minY\": " + N(proj.StartY - proj.WorldH) +
+                          ", \"maxY\": " + N(proj.StartY) + " }");
             }
 
-            sb.Append("}\n");
-            File.WriteAllText(Path.Combine(mapDir, "map.json"), sb.ToString());
+            File.WriteAllText(Path.Combine(mapDir, "map.json"),
+                              "{\n" + string.Join(",\n", parts.ToArray()) + "\n}\n");
 
             Console.WriteLine();
             Console.WriteLine("Installed into the live map client:");

@@ -76,8 +76,9 @@ const defaults = {
   follow:      true,
   trailLength: 400,
   mock:        false,
-  server:      '',
-  panelOpen:   null      // null = decide from viewport width on first run
+  server:      "",
+  panelOpen:   null,     // null = decide from viewport width on first run
+  transformSource: null  // "auto" (from the setup tool) or "manual"
 };
 
 let settings = load();
@@ -419,14 +420,35 @@ function updateFeedStatus() {
 // Map
 // --------------------------------------------------------------------------
 let map, overlay, imageBounds = null, imageSize = null;
+
+/**
+ * CRS whose projected pixels run from the image's TOP-left, rather than
+ * CRS.Simple's default of counting upward from zero.
+ *
+ * Latitude/longitude are unaffected — this only changes how Leaflet projects
+ * them to screen — so the calibration transform is valid either way. It matters
+ * for tiles: with the default transformation the projected Y is negative, so
+ * Leaflet asks for negative tile rows. Shifting by the image height makes row 0
+ * the top of the map, which is how the pyramid is written.
+ *
+ * This has to be decided when the map is CREATED. Assigning map.options.crs
+ * later leaves Leaflet's cached pixel origin describing the old projection, and
+ * the symptom is a tile layer that quietly renders nothing at all.
+ */
+function topLeftCrs(height) {
+  return L.extend({}, L.CRS.Simple, {
+    transformation: new L.Transformation(1, 0, -1, height)
+  });
+}
 let marker = null, markerSvg = null;
 let trailLine = null;
 let trailPts = [];          // game-space points
 let calLayer = null;
 
-function initMap() {
+function initMap(tileHeight) {
   map = L.map('map', {
-    crs: L.CRS.Simple,
+    // Tiles need the top-left projection; a plain image overlay does not care.
+    crs: tileHeight ? topLeftCrs(tileHeight) : L.CRS.Simple,
     minZoom: -8,
     maxZoom: 6,
     zoomControl: true,
@@ -457,6 +479,55 @@ function initMap() {
 
 let overlayUrl = null;
 
+/**
+ * Uses the tile pyramid the setup tool built, rather than one enormous image.
+ *
+ * An 8192-wide map is a 19 MB PNG but roughly 400 MB of RGBA once decoded, and
+ * an imageOverlay holds all of it at every zoom. Tiles are fetched only where
+ * you are looking.
+ *
+ * Latitude/longitude stay in full-resolution pixels, so Leaflet zoom 0 is the
+ * sharpest level and the lower levels are negative. tileLayer's zoomOffset maps
+ * those back onto the folder names 0..maxZoom on disk.
+ */
+function setMapTiles(base, manifest) {
+  const t = manifest.tiles;
+  const w = manifest.width, h = manifest.height;
+
+  imageBounds = L.latLngBounds([[0, 0], [h, w]]);
+  imageSize = { w: w, h: h };
+
+  if (overlay) overlay.remove();
+  if (overlayUrl) { URL.revokeObjectURL(overlayUrl); overlayUrl = null; }
+
+  overlay = L.tileLayer(base + '/map/' + t.path, {
+    tileSize: t.tileSize,
+    // minZoom/maxZoom are the LAYER's own limits and both must be set. Leaflet
+    // discards the tile zoom entirely when it falls outside them, and the
+    // layer's default minZoom is 0 — so with only minNativeZoom set, every
+    // negative zoom renders nothing at all, silently.
+    minZoom: -t.maxZoom,
+    maxZoom: 2,
+    // Native levels run -maxZoom..0; allowing a little beyond lets Leaflet
+    // scale the sharpest tiles up rather than refusing to zoom further.
+    minNativeZoom: -t.maxZoom,
+    maxNativeZoom: 0,
+    zoomOffset: t.maxZoom,
+    bounds: imageBounds,
+    noWrap: true,
+    keepBuffer: 2
+  }).addTo(map);
+  overlay.bringToBack();
+
+  map.setMinZoom(-t.maxZoom);
+  map.setMaxZoom(2);
+  map.setMaxBounds(imageBounds.pad(0.6));
+  map.fitBounds(imageBounds);
+
+  $('#imgInfo').textContent =
+    `${w} × ${h} px, ${t.count} tiles (zoom 0–${t.maxZoom})`;
+}
+
 async function setMapImage(blob, name) {
   const url = URL.createObjectURL(blob);
   const img = new Image();
@@ -483,7 +554,7 @@ async function setMapImage(blob, name) {
 
   map.setMaxBounds(imageBounds.pad(0.6));
   map.setMinZoom(map.getBoundsZoom(imageBounds) - 3);
-  if (!settings.transform) map.fitBounds(imageBounds);
+  map.fitBounds(imageBounds);
 
   $('#imgInfo').textContent = `${name || 'image'} — ${w} × ${h} px`;
   $('#setup').hidden = true;
@@ -667,6 +738,7 @@ function calApply() {
   if (!t) { toast('Could not solve a transform from those points.'); return; }
 
   settings.transform = t;
+  settings.transformSource = 'manual';   // survives a re-run of the setup tool
   save();
   trailPts = [];
   redrawTrail();
@@ -690,6 +762,7 @@ function calReset() {
   // Fall back to the calibration the setup tool derived from the game, not to
   // nothing — starting over by hand is almost never what you want.
   settings.transform = installedTransform;
+  settings.transformSource = installedTransform ? 'auto' : null;
   save();
   calPoints.forEach(p => { p.game = null; p.img = null; });
   pickingIndex = -1;
@@ -785,7 +858,18 @@ function wireUi() {
   $('#setupRetry').addEventListener('click', async () => {
     const status = $('#setupStatus');
     status.textContent = 'Checking…';
-    if (await tryInstalledMap()) {
+
+    const manifest = await fetchManifest();
+
+    // A tiled map needs a CRS chosen at map-creation time, so once setup has
+    // produced one the only honest way to pick it up is a reload.
+    if (manifestHasTiles(manifest)) {
+      status.textContent = 'Map found — reloading…';
+      location.reload();
+      return;
+    }
+
+    if (manifest && await applyManifest(manifest)) {
       $('#setup').hidden = true;
       renderCal();
       toast(settings.transform
@@ -822,27 +906,51 @@ let installedTransform = null;
  * over the local HTTP feed, so unlike a hand-picked image it is present on
  * every device that opens the page and survives browser storage being cleared.
  */
-async function tryInstalledMap() {
-  const base = (settings.server || '').trim().replace(/\/+$/, '');
+function serverBase() {
+  return (settings.server || '').trim().replace(/\/+$/, '');
+}
+
+/** The setup tool's manifest, or null if setup has not been run. */
+async function fetchManifest() {
   try {
-    const r = await fetch(base + '/map/map.json', { cache: 'no-store' });
-    if (!r.ok) return false;
+    const r = await fetch(serverBase() + '/map/map.json', { cache: 'no-store' });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) {
+    return null;
+  }
+}
 
-    const manifest = await r.json();
-    const name = manifest.image || 'gtav-map.png';
+function manifestHasTiles(m) {
+  return !!(m && m.tiles && m.width && m.height);
+}
 
-    const img = await fetch(base + '/map/' + name);
-    if (!img.ok) return false;
-
-    await setMapImage(await img.blob(), name);
+async function applyManifest(manifest) {
+  const base = serverBase();
+  try {
+    if (manifestHasTiles(manifest)) {
+      setMapTiles(base, manifest);
+    } else {
+      // Older setup output, or tiling failed — fall back to the single image.
+      const name = manifest.image || 'gtav-map.png';
+      const img = await fetch(base + '/map/' + name);
+      if (!img.ok) return false;
+      await setMapImage(await img.blob(), name);
+    }
 
     // The setup tool reads the world rectangle the map covers straight out of
     // the game's minimap tuning, so an installed map arrives already calibrated
     // and never needs the two-landmark dance.
     if (isValidTransform(manifest.transform)) {
       installedTransform = manifest.transform;
-      if (!settings.transform) {
+
+      // Adopt it unless the user has calibrated by hand. Re-running setup at a
+      // different resolution changes the transform, and keeping a stale one
+      // would silently put the marker in the wrong place by exactly the ratio
+      // of the two map sizes.
+      if (!settings.transform || settings.transformSource !== 'manual') {
         settings.transform = manifest.transform;
+        settings.transformSource = 'auto';
         save();
       }
     }
@@ -853,8 +961,8 @@ async function tryInstalledMap() {
   }
 }
 
-async function loadMap() {
-  if (await tryInstalledMap()) {
+async function loadMap(manifest) {
+  if (manifest && await applyManifest(manifest)) {
     $('#setup').hidden = true;
     return;
   }
@@ -874,10 +982,14 @@ async function loadMap() {
 }
 
 async function init() {
-  initMap();
+  // The manifest has to be read before the map exists: whether we are drawing
+  // tiles decides which CRS the map must be created with, and that cannot be
+  // changed afterwards.
+  const manifest = await fetchManifest();
+  initMap(manifestHasTiles(manifest) ? manifest.height : 0);
   wireUi();
 
-  await loadMap();
+  await loadMap(manifest);
   renderCal();
 
   startFeed();

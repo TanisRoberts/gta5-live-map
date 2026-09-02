@@ -73,7 +73,44 @@ tools\tile-ripper\bin\Release\net48\TileRipper.exe --game "<GTA V folder>" --out
 | `--out` | Output folder. Default `map-out`. |
 | `--keep-tiles` | Also write the individual tiles, not just the composite. |
 
-Output is `gtav-map.png`, 2048 x 3072.
+Output is `gtav-map.png` plus a `{z}/{x}/{y}` tile pyramid, 8192 x 12288 by
+default.
+
+## Why the map is drawn, not extracted
+
+The obvious approach — pulling out the minimap's raster tiles — caps the road
+layer at 1024 x 1536 for the whole map. At that scale a street a dozen world
+units wide lands on about **three pixels**, so zooming in just magnifies mush.
+
+The same map also exists as **geometry**, in `x64e.rpf\levels\gta5\minimap.rpf`.
+Drawing that has no resolution ceiling, and it is fast — around 145,000
+triangles, a couple of seconds. Three things about the format, all established
+by inspecting it rather than assuming:
+
+- Vertices are 16 bytes: XYZ floats then BGRA. Colour is **baked per vertex**,
+  so nothing needs classifying by material — which matters, because the entire
+  map shares one shader and the material tells you nothing.
+- Every alpha is 255. Transparency is not involved.
+- Z spans only about -12 to 15, far too small to be elevation. It is a
+  **draw-order key**; sorting on it is what stops terrain and sand painting over
+  the roads. Skip that step and the output is unusable.
+
+Water is absent from the geometry — the game composites over the sea bitmap
+(`minimap.ymt` sets `eBitmapForPause` to `MM_BITMAP_VERSION_SEA`), so the sea
+raster is drawn first as a base layer.
+
+Pass `--source raster` for the old low-resolution path; it is also the automatic
+fallback if the geometry cannot be read.
+
+## Why tiles
+
+An 8192-wide map is a 19 MB PNG but roughly **400 MB of RGBA** once the browser
+decodes it, and a single image overlay holds all of it at every zoom. The
+pyramid (about 2,000 tiles over six levels) means only what is on screen is
+fetched.
+
+Latitude and longitude stay in full-resolution pixels, so the calibration
+transform is identical either way.
 
 If the client is found at `<game>\scripts\LiveMapWeb` the map is **installed
 into it automatically**, along with a `map.json` manifest — open the client and

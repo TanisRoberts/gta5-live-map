@@ -371,6 +371,14 @@ function headingToCssDeg(heading) {
 let buf = [];
 let clockOffset = null;
 let lastSampleT = -Infinity;
+
+/* True while the last raw sample had the player dead or under arrest. Declared
+   here with the rest of the feed state because resetBuffer clears it, and that
+   runs before anything further down the file has been evaluated. */
+let wasDown = false;
+
+/* So one break is applied once, not once per frame while its sample is current. */
+let lastBreakT = null;
 let lastGoodAt  = -Infinity;
 
 /*
@@ -421,6 +429,9 @@ function pushSample(s) {
     if (gap > 0 && gap < 5000) sampleGapMs += (gap - sampleGapMs) * 0.2;
   }
 
+  // Classified here, on raw samples, before interpolation can smooth it away.
+  s.trail = classifySample(s, prev);
+
   buf.push(s);
   lastGoodAt = now;
 
@@ -434,6 +445,7 @@ function resetBuffer() {
   lastSampleT = -Infinity;
   lastGoodAt  = -Infinity;
   sampleGapMs = POLL_MS;
+  wasDown = false;
 }
 
 /** Interpolated state at a point on our local clock, or null. */
@@ -446,6 +458,15 @@ function sampleAt(tLocal) {
   let i = buf.length - 2;
   while (i > 0 && buf[i].lt > tLocal) i--;
   const p = buf[i], q = buf[i + 1];
+
+  /*
+   * Never interpolate across a classified sample. Blending a pre-death
+   * position with a post-respawn one produces a smooth walk across the map
+   * that is not where anybody was, and that blend is what hid the teleport in
+   * the first place. Snap to the newer sample instead.
+   */
+  if (q.trail) return q;
+
   const span = q.lt - p.lt;
   const u = span > 0 ? (tLocal - p.lt) / span : 0;
 
@@ -1027,56 +1048,56 @@ let becameVisibleAt = 0;
  * stayed blank and no marker ever appeared, which is worse than saying nothing.
  * The HUD timer calls this too, so the readout is correct the moment you look.
  */
-/*
- * Death and arrest latch, read at the moment they happen.
- *
- * By the time the position jumps you are already alive again and standing
- * outside the hospital, so the sample that carries the jump says nothing about
- * what caused it. These remember where you were when it started.
- */
-let lastTrailFix = null;    // {x, y, t} of the previous recorded sample
-let pendingEvent = null;    // {x, y, kind} waiting for the jump to confirm it
-let wasDead = false, wasArrested = false;
 
 /**
- * Decides whether this sample follows a teleport rather than movement, and
- * places a death or arrest marker where the journey actually ended.
+ * Whether a freshly arrived raw sample should be recorded, skipped, or begin a
+ * new run. Returns 'skip', 'break', or '' for ordinary travel.
  *
- * Returns true when the trail should break before this point.
+ * Death and arrest are driven by the game's own flags rather than inferred
+ * from the size of the position jump. Inferring it did not work: time stops
+ * during the wasted sequence, so the feed goes quiet and then delivers one
+ * sample far away, and sampleAt walked between the two over many frames —
+ * dozens of small steps, none of them impossible, drawing the very line across
+ * the map the check existed to catch.
+ *
+ * The flags have neither problem. The marker lands on the first sample that
+ * reports you down, which is exactly where it happened, and nothing about it
+ * depends on how far the respawn moved you or how long the feed was quiet.
+ *
+ * This must run on RAW samples, before any interpolation.
  */
-function noteTrailJump(s) {
-  // Latch on the rising edge only: the flags stay true for the whole wasted
-  // sequence, and we want the spot where it began, not where it finished.
-  if (s.isDead && !wasDead) pendingEvent = { x: s.x, y: s.y, kind: 'death' };
-  else if (s.isArrested && !wasArrested) pendingEvent = { x: s.x, y: s.y, kind: 'arrest' };
-  wasDead = !!s.isDead;
-  wasArrested = !!s.isArrested;
+function classifySample(s, prev) {
+  const dead = !!s.isDead;
+  const down = dead || !!s.isArrested;
 
-  const prev = lastTrailFix;
-  lastTrailFix = { x: s.x, y: s.y, t: s.t };
-  if (!prev) return false;
-
-  const gapSec = Math.max(0, (s.t - prev.t) / 1000);
-  const moved = Math.hypot(s.x - prev.x, s.y - prev.y);
-
-  // What could plausibly have been covered in that gap, at the speed we were
-  // told, with room to spare. Below this it is travel; above it, a teleport.
-  const plausible = Math.max(TRAIL_JUMP_FLOOR,
-                             (Math.abs(s.speed || 0) + 10) * gapSec * TRAIL_JUMP_FACTOR);
-  if (moved <= plausible) return false;
-
-  /*
-   * A jump with no latched cause is a mission warp or a fast travel. Break the
-   * line for it too — we still did not drive that route — but do not invent a
-   * death marker to explain it.
-   */
-  if (pendingEvent) {
-    trailEvents.push(pendingEvent);
+  // Rising edge: where the journey actually ended.
+  if (down && !wasDown) {
+    trailEvents.push({ x: s.x, y: s.y, kind: dead ? 'death' : 'arrest' });
     while (trailEvents.length > TRAIL_EVENT_MAX) trailEvents.shift();
-    pendingEvent = null;
     drawEvents();
   }
-  return true;
+  const revived = !down && wasDown;
+  wasDown = down;
+
+  // Record nothing while you are down. A body does not travel, and whatever
+  // the camera does over the wasted sequence is not a journey.
+  if (down) return 'skip';
+
+  // First sample back on your feet: start a new run rather than joining it to
+  // where you fell.
+  if (revived) return 'break';
+
+  /*
+   * Everything else that moves impossibly far is a mission warp or a fast
+   * travel. Break for those too — we still did not drive them — but do not
+   * invent a death to explain them.
+   */
+  if (!prev) return '';
+  const gapSec = Math.max(0, (s.t - prev.t) / 1000);
+  const moved = Math.hypot(s.x - prev.x, s.y - prev.y);
+  const plausible = Math.max(TRAIL_JUMP_FLOOR,
+                             (Math.abs(s.speed || 0) + 10) * gapSec * TRAIL_JUMP_FACTOR);
+  return moved > plausible ? 'break' : '';
 }
 
 /** Death and arrest markers, redrawn whole — there are only ever a handful. */
@@ -1113,7 +1134,19 @@ function sampleCurrent() {
   // record of where you went, not a drawing artefact — tying it to
   // requestAnimationFrame meant a hidden tab silently lost the whole route,
   // which is the opposite of what a breadcrumb trail is for.
-  pushTrail(s.x, s.y, trailCategory(s), noteTrailJump(s));
+  /*
+   * Nothing is recorded while you are down, so the trail simply stops where
+   * you fell and picks up again where you came back.
+   *
+   * The break belongs to one sample, but that sample stays current for many
+   * frames while the render delay catches up, so it is applied once — or every
+   * frame would push another break point at the same spot.
+   */
+  if (s.trail !== 'skip') {
+    const brk = s.trail === 'break' && s.t !== lastBreakT;
+    if (brk) lastBreakT = s.t;
+    pushTrail(s.x, s.y, trailCategory(s), brk);
+  }
 
   return s;
 }

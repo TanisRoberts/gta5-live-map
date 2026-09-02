@@ -283,6 +283,7 @@ namespace GtaLiveMap
             string vehicleClass = null;
             string vehicleColor = null;
             string licensePlate = null;
+            string plateStyle = null;
             string vehicleMake = null;
             float engineHealth = 0f;
             bool onFire = false;
@@ -386,6 +387,13 @@ namespace GtaLiveMap
                         : mods.PrimaryColor.ToString();
 
                     licensePlate = Clean(mods.LicensePlate);
+
+                    // Which plate design the vehicle is actually wearing, so
+                    // the client can draw that one rather than assume the
+                    // default. Rockstar's own names carry the colours for the
+                    // six base styles (BlueOnWhite1..3, YellowOnBlue,
+                    // YellowOnBlack, NorthYankton); the rest are branded.
+                    plateStyle = mods.LicensePlateStyle.ToString();
                 }
             }
             else
@@ -422,6 +430,7 @@ namespace GtaLiveMap
             sb.Append(",\"vehicleClass\":").Append(Json.String(vehicleClass));
             sb.Append(",\"vehicleColor\":").Append(Json.String(vehicleColor));
             sb.Append(",\"licensePlate\":").Append(Json.String(licensePlate));
+            sb.Append(",\"plateStyle\":").Append(Json.String(plateStyle));
             sb.Append(",\"vehicleMake\":").Append(Json.String(vehicleMake));
             sb.Append(",\"engineHealth\":").Append(Json.Number(engineHealth));
             sb.Append(",\"onFire\":").Append(Json.Bool(onFire));

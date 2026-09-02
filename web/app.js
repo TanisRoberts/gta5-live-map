@@ -50,6 +50,38 @@ const TRAIL_JUMP_FACTOR = 3;    // multiple of plausible travel in the gap
 const TRAIL_EVENT_MAX = 40;     // markers kept before the oldest is dropped
 
 /*
+ * Plate designs, keyed by the game's own LicensePlateStyle.
+ *
+ * The six base styles are grounded rather than guessed: vehshare.ytd holds
+ * exactly plate01..plate05 plus yankton_plate, matching the six base enum
+ * values, and Rockstar named five of them after their own colours. San Andreas
+ * is the state (Los Santos is a city in it), which is why the banner reads the
+ * way a California plate does.
+ *
+ * The Enhanced-only branded styles below are a reasonable reading of each
+ * brand, NOT checked against the artwork — their textures live in DLC archives
+ * that have not been opened. The banner text is right; treat the colours as
+ * provisional.
+ */
+const PLATE_STYLES = {
+  BlueOnWhite1:  { bg: '#fefdf6', edge: '#a9a68f', ink: '#17307d', band: '#33599f', text: 'San Andreas' },
+  BlueOnWhite2:  { bg: '#fefdf6', edge: '#a9a68f', ink: '#17307d', band: '#33599f', text: 'San Andreas' },
+  BlueOnWhite3:  { bg: '#fefdf6', edge: '#a9a68f', ink: '#17307d', band: '#33599f', text: 'San Andreas' },
+  YellowOnBlue:  { bg: '#1b3f8f', edge: '#0f2557', ink: '#ffd23f', band: '#ffd23f', text: 'San Andreas' },
+  YellowOnBlack: { bg: '#141414', edge: '#000000', ink: '#f5c518', band: '#f5c518', text: 'San Andreas' },
+  NorthYankton:  { bg: '#f2f6fb', edge: '#9fb0c4', ink: '#1d4c86', band: '#1d4c86', text: 'North Yankton' },
+  // Provisional, as noted above.
+  ECola:         { bg: '#f4f2ea', edge: '#a33', ink: '#c0242c', band: '#c0242c', text: 'eCola' },
+  Sprunk:        { bg: '#f4f2ea', edge: '#3a7d2c', ink: '#2f7a24', band: '#2f7a24', text: 'Sprunk' },
+  LasVenturas:   { bg: '#fdf6e6', edge: '#b09a63', ink: '#8a1f1f', band: '#8a1f1f', text: 'Las Venturas' },
+  LibertyCity:   { bg: '#f7f7f2', edge: '#9a9a8c', ink: '#294a2e', band: '#294a2e', text: 'Liberty City' },
+  LSCarMeet:     { bg: '#17181c', edge: '#000000', ink: '#e8e6df', band: '#7ad0ff', text: 'LS Car Meet' },
+  LSPanic:       { bg: '#17181c', edge: '#000000', ink: '#e8e6df', band: '#ff7ac0', text: 'Los Santos' },
+  LSPounders:    { bg: '#f4f2ea', edge: '#a9a68f', ink: '#7a3410', band: '#c25f1c', text: 'Los Santos' }
+};
+const PLATE_DEFAULT = PLATE_STYLES.BlueOnWhite1;
+
+/*
  * Separate follow zooms for driving and walking. On foot you want to see the
  * street you are on; at speed you want to see what is coming. Switching mode
  * snaps to the relevant one, which also discards any manual zoom — that is
@@ -593,6 +625,9 @@ function mockTick() {
     vehicleClass:       veh ? veh.cls : null,
     vehicleColor:       veh ? veh.colour : null,
     licensePlate:       veh ? veh.plate : null,
+    // Walk every plate design in turn, so all thirteen can be looked at
+    // without owning thirteen cars.
+    plateStyle:         veh ? Object.keys(PLATE_STYLES)[Math.floor(t / 4000) % Object.keys(PLATE_STYLES).length] : null,
     vehicleMake:        veh ? veh.make : null,
     /*
      * Damage cycles so every tell-tale state can be seen with the game shut:
@@ -1281,6 +1316,15 @@ function updateHud() {
     // The plate is a block of its own now, so the number goes inside it.
     const plate = $('#vehiclePlate');
     $('#vehiclePlateNumber').textContent = s.licensePlate || '';
+
+    // Wear whichever design the vehicle actually has, falling back to the
+    // default San Andreas plate for a style we do not know.
+    const ps = PLATE_STYLES[s.plateStyle] || PLATE_DEFAULT;
+    plate.style.setProperty('--plate-bg', ps.bg);
+    plate.style.setProperty('--plate-edge', ps.edge);
+    plate.style.setProperty('--plate-ink', ps.ink);
+    plate.style.setProperty('--plate-band', ps.band);
+    $('#plateState').textContent = ps.text;
     plate.hidden = !s.licensePlate;
   } else {
     vehicleCard.hidden = true;

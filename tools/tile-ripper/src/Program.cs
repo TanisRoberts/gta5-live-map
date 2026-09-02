@@ -96,7 +96,9 @@ namespace GtaLiveMap.TileRipper
                  */
                 string find = Arg(args, "--find", null);
                 string dump = Arg(args, "--dump", null);
-                if (find != null || dump != null) return Probe(find, dump, outDir);
+                string textures = Arg(args, "--textures", null);
+                if (find != null || dump != null || textures != null)
+                    return Probe(find, dump, textures, outDir);
 
                 Projection proj = ReadProjection();
                 string composite = Path.Combine(outDir, "gtav-map.png");
@@ -207,7 +209,7 @@ namespace GtaLiveMap.TileRipper
         /// Lists archive paths containing a substring, and/or writes one file
         /// out. Read-only, like everything else here.
         /// </summary>
-        private static int Probe(string find, string dump, string outDir)
+        private static int Probe(string find, string dump, string textures, string outDir)
         {
             if (!string.IsNullOrEmpty(find))
             {
@@ -224,6 +226,26 @@ namespace GtaLiveMap.TileRipper
                     }
                 }
                 Console.WriteLine(hits + " match(es)");
+            }
+
+            if (!string.IsNullOrEmpty(textures))
+            {
+                RpfFileEntry te = _mgr.GetEntry(textures) as RpfFileEntry;
+                if (te == null)
+                {
+                    Console.Error.WriteLine("Not found: " + textures);
+                    return 2;
+                }
+                YtdFile td = new YtdFile();
+                td.Load(_mgr.GetFileData(textures), te);
+                if (td.TextureDict == null || td.TextureDict.Dict == null)
+                {
+                    Console.Error.WriteLine("No texture dictionary in " + textures);
+                    return 2;
+                }
+                foreach (Texture tex in td.TextureDict.Dict.Values)
+                    Console.WriteLine(tex.Name + "  " + tex.Width + "x" + tex.Height + "  " + tex.Format);
+                Console.WriteLine(td.TextureDict.Dict.Count + " texture(s)");
             }
 
             if (!string.IsNullOrEmpty(dump))

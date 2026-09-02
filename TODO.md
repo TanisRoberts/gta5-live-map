@@ -11,68 +11,90 @@ Replace the single control panel with a Google-Maps-navigation / Uber hybrid:
 four corner cards floating over a full-bleed map, no persistent sidebar.
 
 ```
-┌─────────────────────────┬─────────────────────────┐
-│  NEXT DIRECTION         │        SETTINGS ▾       │
-│  (top left)             │   + character avatar    │
-│                         │        (top right)      │
-│                                                   │
-│                  [ M A P ]                        │
-│                                                   │
-│  VEHICLE CARD           │    MAP CONTROLS         │
-│  make / model /         │    + SPEEDOMETER        │
-│  colour / plate         │      (bottom right)     │
-│  (bottom left)          │                         │
-└─────────────────────────┴─────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│ ┌────────┐                                    ⚙  ( ◕ )    │
+│ │DISTRICT│                                  cog   avatar  │
+│ └────────┘                                                │
+│                                                           │
+│                        [ M A P ]                          │
+│                                                           │
+│ ┌──────────────┐                                   ┌───┐  │
+│ │ VEHICLE      │                                   │ ⌖ │  │
+│ │ model        │        ┌─────────────────┐  ┌──┐  │ ~ │  │
+│ │ colour plate │        │ ↰ NEXT DIRECTION│  │65│  │ ⦿ │  │
+│ └──────────────┘        │   Street Name   │  │mph│ │ ⛶ │  │
+│                         │   district      │  └──┘  ├───┤  │
+│                         └─────────────────┘        │ 👁 │  │
+│                                                    └───┘  │
+└───────────────────────────────────────────────────────────┘
 ```
 
-This supersedes the old "move Follow player onto the map" item — those buttons
-are now part of the bottom-right cluster.
+- **Bottom centre** — a thin card: next direction and current street, with the
+  district small underneath. This is where a satnav puts its instruction, so it
+  is the one card that earns centre stage.
+- **Top left** — a tiny card showing the current district.
+- **Top right** — a small cog icon button and the player avatar in a circle.
+  Nothing else; settings live behind the cog.
+- **Bottom right** — the map control stack, with the speedometer sitting just to
+  its left.
+
+Map controls, top to bottom: **recentre**, **toggle trail**, **toggle follow
+player**, **fullscreen**, then **hide UI** separated at the bottom.
+
+**Hide UI** is an eye icon that hides every other card and control — and stays
+visible itself, or there is no way back.
+
+This supersedes the old "move Follow player onto the map" item.
+
+**Note:** the district appears both under the street on the bottom-centre card
+and on its own top-left card. That is as specified, but it is the same value in
+two places — worth revisiting once it can be seen in situ.
 
 ### Build order, easiest first
 
 The four corners are **not** equally feasible. Ordered by what actually blocks
 them:
 
-**a. Bottom right — map controls + speedometer.** Buildable today, nothing new
-needed. Follow and Recentre become icon buttons (a `L.Control` in the
-`bottomright` corner, not a floating div, so it moves with the map chrome).
+**a. Bottom right — map controls + speedometer.** Buildable today. Recentre,
+toggle trail, toggle follow, fullscreen, and hide-UI, as a `L.Control` in the
+`bottomright` corner rather than a floating div so it moves with the map chrome.
 Speed is already in the feed.
 
 Carry over from the old item: follow mode does nothing when zoomed out far
 enough to see the whole map, because `maxBounds` leaves nowhere to pan. Harmless
-as a checkbox, but a lit-up GPS button that does nothing reads as broken. Either
-disable it at that zoom or have it zoom to a sensible follow level.
+as a checkbox, but a lit-up GPS button that does nothing reads as broken — the
+button should zoom to the follow level rather than sit there inert.
 
-**b. Bottom left — vehicle card.** Needs three new plugin fields. `vehicleClass`
-already ships; make/model, colour and plate do not:
+**b. Bottom left — vehicle card.** Buildable today; the plugin now sends
+everything needed.
 
-| Field | Where it comes from |
+| Field | Source |
 |---|---|
-| Model | `Vehicle.LocalizedName` — already sent as `vehicleDisplayName` |
-| Make | Not cleanly separable from model in the API; may need a lookup table, or just show the model |
-| Colour | `Vehicle.Mods.PrimaryColor` (an enum — needs mapping to a display name and a swatch) |
-| Registration | `Vehicle.Mods.LicensePlate` |
+| Model | `vehicleDisplayName` |
+| Colour | `vehicleColor` — an enum name like `MetallicWhite`, or `Custom` |
+| Registration | `licensePlate` |
 
-Small, contained plugin work. Do it in one pass with item 4's needs.
+"Make" is not cleanly separable from model in the API and has been dropped:
+model, colour and plate carry the Uber-card feel on their own.
 
-**c. Top right — settings + character avatar.** Detecting *which* character is
-active is easy (compare the player ped's model hash against Michael / Franklin /
-Trevor). Two catches:
+**c. Top right — cog button and character avatar.** Settings content already
+exists; it is the current panel behind a cog.
+
+The avatar is **the one remaining piece of plugin work in the whole backlog** —
+the active character has to be identified from the player ped's model hash and
+added to the feed. Small, but it means one more build-and-Insert cycle.
 
 - **The artwork is Rockstar's.** Character portraits cannot be committed here,
-  same rule as the map image. Either generate a neutral avatar (initial, or a
-  silhouette in the character's signature colour), or treat portraits as a
-  user-supplied local asset like the map.
-- Settings content largely already exists — it is the current panel, restyled
-  into a dropdown.
+  same rule as the map image. Either generate a neutral avatar (an initial, or a
+  silhouette in the character's colour), or treat portraits as a user-supplied
+  local asset like the map itself.
 
-**d. Top left — next direction.** **Blocked.** This is turn-by-turn navigation,
-which needs routing (item 3c), which needs road geometry the client does not
-have. Do not design around this arriving soon.
+**d. Bottom centre — next direction and street.** The street half is buildable
+today: `streetName`, `crossingStreet` and `zoneName` all ship now.
 
-Worth deciding early: build the card as a placeholder that renders a
-straight-line bearing and distance to a manual marker (item 3b). That gives the
-layout something real to show, and degrades honestly, without pretending to
+The **next direction** half is still blocked on routing (item 3c). Build the
+card with the street and district working, and leave room for the instruction —
+better an honest card that shows where you are than a fake one pretending to
 route.
 
 **e. Wanted-level vignette.** A blue and red gradient around the screen edge,

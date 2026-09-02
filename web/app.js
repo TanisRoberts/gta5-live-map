@@ -136,11 +136,54 @@ const defaults = {
   transform:   null,     // { a, b, c, d }
   follow:      true,
   trailLength: 400,
+  trailVisible: true,
   mock:        false,
   server:      "",
-  panelOpen:   null,     // null = decide from viewport width on first run
+  // Persisted now that the settings panel can actually change them. They were
+  // briefly constants precisely because it could not.
+  autoZoom:    true,
+  zoomVehicle: ZOOM_VEHICLE,
+  zoomFoot:    ZOOM_FOOT,
+  units:       'mph',    // 'mph' | 'kmh'
+  vignette:    true,
+  uiHidden:    false,
   transformSource: null  // "auto" (from the setup tool) or "manual"
 };
+
+/*
+ * GTA's vehicle colours are enum names, not values. This maps the families to
+ * something close enough for a 10px swatch — the point is "roughly that colour
+ * at a glance", not a paint match. Anything unrecognised falls back to grey
+ * rather than guessing wrong.
+ */
+const COLOUR_SWATCH = [
+  [/black|carbon/i,          '#15181c'],
+  [/white|ice/i,             '#e8ebee'],
+  [/silver|chrome|platinum/i,'#b9c0c7'],
+  [/(^|[^a-z])grey|gray|gunmetal|anthracite|graphite/i, '#6b7480'],
+  [/red|crimson|garnet|wine|cherry/i, '#c0392b'],
+  [/orange|copper|bronze|sunset/i,    '#d3641d'],
+  [/yellow|gold|lime.?green|bright.?yellow/i, '#d8b021'],
+  [/green|olive|forest|moss/i,        '#2e7d46'],
+  [/aqua|teal|turquoise/i,            '#1f8f92'],
+  [/blue|navy|ultra.?blue|midnight/i, '#2b6cb0'],
+  [/purple|violet|lilac|indigo/i,     '#6b4b9c'],
+  [/pink|magenta|salmon/i,            '#c2568c'],
+  [/brown|beige|tan|cream|sand|umber/i, '#8a7355']
+];
+
+function colourSwatch(name) {
+  if (!name) return null;
+  if (/^custom$/i.test(name)) return null;
+  for (const [re, hex] of COLOUR_SWATCH) if (re.test(name)) return hex;
+  return '#6b7480';
+}
+
+/** "MetallicBlack" -> "Metallic Black" */
+function prettyColour(name) {
+  if (!name) return '';
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
+}
 
 let settings = load();
 
@@ -495,8 +538,29 @@ function stopFeed() {
 }
 
 function updateFeedStatus() {
+  /*
+   * Only judge staleness when someone is actually looking.
+   *
+   * A hidden tab has its timers throttled — to once a second, and to once a
+   * minute after a while — so the feed goes stale because WE stopped asking,
+   * not because the plugin stopped answering. Reporting signal loss for that
+   * is crying wolf, and an indicator whose entire value is being trusted
+   * cannot afford it. The brief settling window covers the gap between
+   * becoming visible and the first poll landing.
+   */
+  const settling = document.hidden || (performance.now() - becameVisibleAt < 1200);
+  const fresh = settling || (performance.now() - lastGoodAt < staleMs());
+
+  // The always-visible light. A frozen marker with no explanation reads as a
+  // paused game rather than a broken feed, so this must not live behind the
+  // settings cog.
+  const signal = $('#signal'), signalText = $('#signalText');
+  signal.classList.toggle('lost', !fresh);
+  signalText.textContent = settings.mock ? 'Mock' : (fresh ? 'Live' : 'No signal');
+  $('#navCard').classList.toggle('stale', !fresh);
+
+  // Detail, for the Advanced section.
   const dot = $('#feedDot'), txt = $('#feedStatus');
-  const fresh = performance.now() - lastGoodAt < staleMs();
   dot.className = 'dot';
   if (settings.mock) {
     dot.classList.add('mock');
@@ -706,6 +770,9 @@ function trailCategory(s) {
  */
 function redrawTrail() {
   trailLayer.clearLayers();
+  // Hidden is a display choice, not a reason to stop recording — the points
+  // keep accumulating so turning it back on shows where you actually went.
+  if (!settings.trailVisible) return;
   if (!settings.transform || trailPts.length < 2) return;
 
   let start = 0;
@@ -766,6 +833,9 @@ let awaitingFirstFix = true;
 /** null until the first fix, so the first sample does not count as a change. */
 let lastInVehicle = null;
 
+/** When the tab last became visible — see updateFeedStatus. */
+let becameVisibleAt = 0;
+
 /**
  * Advances the interpolated state.
  *
@@ -810,7 +880,8 @@ function frame() {
   // zoom also discards any manual zoom, which is intended — the two levels stay
   // predictable rather than drifting with whatever you last scrolled to.
   const inVehicle = !!s.inVehicle;
-  const modeChanged = lastInVehicle !== null && lastInVehicle !== inVehicle;
+  const modeChanged =
+    settings.autoZoom && lastInVehicle !== null && lastInVehicle !== inVehicle;
   lastInVehicle = inVehicle;
 
   if (settings.follow) {
@@ -825,14 +896,12 @@ function frame() {
 }
 
 /**
- * Follow zoom for the current mode.
- *
- * Deliberately constants rather than persisted settings: there is no UI to
- * change them, and a stored copy silently overrides any future retune — which
- * it already did once. Item 1 adds real map controls; persist them then.
+ * Follow zoom for the current mode. Now backed by settings, since the panel can
+ * change them — the constants remain the fallback for a corrupt stored value.
  */
 function modeZoom(inVehicle) {
-  return inVehicle ? ZOOM_VEHICLE : ZOOM_FOOT;
+  const z = inVehicle ? settings.zoomVehicle : settings.zoomFoot;
+  return Number.isFinite(z) ? z : (inVehicle ? ZOOM_VEHICLE : ZOOM_FOOT);
 }
 
 function updateHud() {
@@ -840,13 +909,55 @@ function updateHud() {
   // rAF is paused while the tab is hidden, so advance the state here too.
   const s = sampleCurrent();
   if (!s) return;
-  $('#hudSpeed').textContent   = Math.round(s.speed * 2.23694);      // m/s -> mph
-  $('#hudVehicle').textContent = s.inVehicle ? (s.vehicleDisplayName || 'Vehicle') : 'On foot';
-  $('#hudWanted').textContent  = s.wantedLevel > 0 ? '★'.repeat(s.wantedLevel) : '—';
-  $('#hudClock').textContent   =
-    String(s.gameHour ?? 0).padStart(2, '0') + ':' + String(s.gameMinute ?? 0).padStart(2, '0');
-  $('#hudPos').textContent     =
-    `${s.x.toFixed(0)}, ${s.y.toFixed(0)}, ${(s.z ?? 0).toFixed(0)}`;
+
+  // Speed
+  const kmh = s.speed * 3.6;
+  $('#speedValue').textContent = Math.round(settings.units === 'kmh' ? kmh : kmh * 0.621371);
+  $('#speedo').querySelector('.unit').textContent = settings.units === 'kmh' ? 'km/h' : 'mph';
+
+  // Vehicle card — absent entirely on foot, rather than showing empty fields.
+  const vehicleCard = $('#vehicleCard');
+  if (s.inVehicle) {
+    vehicleCard.hidden = false;
+    $('#vehicleModel').textContent = s.vehicleDisplayName || 'Vehicle';
+
+    const colour = $('#vehicleColour');
+    const swatch = colourSwatch(s.vehicleColor);
+    colour.textContent = prettyColour(s.vehicleColor);
+    colour.hidden = !s.vehicleColor;
+    if (swatch) colour.style.setProperty('--swatch', swatch);
+
+    const plate = $('#vehiclePlate');
+    plate.textContent = s.licensePlate || '';
+    plate.hidden = !s.licensePlate;
+  } else {
+    vehicleCard.hidden = true;
+  }
+
+  // Street and district
+  $('#streetName').textContent = s.streetName || 'Off-road';
+  $('#streetSub').textContent =
+    [s.crossingStreet ? 'near ' + s.crossingStreet : null, s.zoneName]
+      .filter(Boolean).join(' · ');
+
+  const district = $('#districtCard');
+  district.hidden = !s.zoneName;
+  if (s.zoneName) $('#districtName').textContent = s.zoneName;
+
+  updateVignette(s.wantedLevel || 0);
+}
+
+/**
+ * Wanted level as a vignette. Intensity rides a single custom property so one
+ * CSS rule covers every level, and only opacity/background animate — the
+ * marker keeps moving smoothly underneath.
+ */
+function updateVignette(level) {
+  const el = $('#vignette');
+  const on = settings.vignette && level > 0;
+  el.classList.toggle('on', on);
+  el.classList.toggle('flash', on);
+  el.style.setProperty('--w', on ? (level / 5).toFixed(2) : '0');
 }
 
 // --------------------------------------------------------------------------
@@ -982,22 +1093,124 @@ function calReset() {
 // --------------------------------------------------------------------------
 function setFollow(on) {
   settings.follow = on;
-  $('#followToggle').checked = on;
+  const btn = $('#btnFollow');
+  if (btn) btn.setAttribute('aria-pressed', String(on));
   save();
 }
 
 function wireUi() {
-  // Panel
+  // --- settings drawer -------------------------------------------------
   const panel = $('#panel');
-  const open = settings.panelOpen === null ? window.innerWidth > 640 : settings.panelOpen;
-  panel.classList.toggle('collapsed', !open);
-  $('#panelToggle').setAttribute('aria-expanded', String(open));
-  $('#panelToggle').addEventListener('click', () => {
-    const collapsed = panel.classList.toggle('collapsed');
-    $('#panelToggle').setAttribute('aria-expanded', String(!collapsed));
-    settings.panelOpen = !collapsed;
+  const settingsBtn = $('#settingsBtn');
+  const setPanel = open => {
+    panel.hidden = !open;
+    settingsBtn.setAttribute('aria-expanded', String(open));
+  };
+  settingsBtn.addEventListener('click', () => setPanel(panel.hidden));
+  $('#panelClose').addEventListener('click', () => setPanel(false));
+
+  // --- map controls ----------------------------------------------------
+  const btnFollow = $('#btnFollow');
+  const syncFollow = () => btnFollow.setAttribute('aria-pressed', String(settings.follow));
+  syncFollow();
+  btnFollow.addEventListener('click', () => {
+    setFollow(!settings.follow);
+    // Following while zoomed out far enough to see the whole island does
+    // nothing — maxBounds leaves nowhere to pan — so a lit button would sit
+    // there looking broken. Zoom to the follow level instead.
+    if (settings.follow && current && settings.transform) {
+      awaitingFirstFix = true;
+    }
+  });
+
+  const btnTrail = $('#btnTrail');
+  const syncTrail = () => btnTrail.setAttribute('aria-pressed', String(settings.trailVisible));
+  syncTrail();
+  btnTrail.addEventListener('click', () => {
+    settings.trailVisible = !settings.trailVisible;
+    save();
+    syncTrail();
+    redrawTrail();
+  });
+
+  $('#btnRecentre').addEventListener('click', () => {
+    if (current && settings.transform) {
+      map.setView(gameToLatLng(current.x, current.y), modeZoom(!!current.inVehicle));
+    } else if (imageBounds) {
+      map.fitBounds(imageBounds);
+    }
+  });
+
+  const btnFs = $('#btnFullscreen');
+  btnFs.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(() => {
+      toast('The browser refused fullscreen — try F11.');
+    });
+  });
+  document.addEventListener('fullscreenchange', () => {
+    btnFs.setAttribute('aria-pressed', String(!!document.fullscreenElement));
+  });
+
+  const btnHide = $('#btnHideUi');
+  const syncHidden = () => {
+    $('#hud').hidden = settings.uiHidden;
+    document.body.classList.toggle('ui-hidden', settings.uiHidden);
+    btnHide.setAttribute('aria-pressed', String(settings.uiHidden));
+    btnHide.title = settings.uiHidden ? 'Show interface' : 'Hide interface';
+    btnHide.querySelector('use').setAttribute('href', settings.uiHidden ? '#i-eye-off' : '#i-eye');
+  };
+  syncHidden();
+  btnHide.addEventListener('click', () => {
+    settings.uiHidden = !settings.uiHidden;
+    if (settings.uiHidden) setPanel(false);
+    save();
+    syncHidden();
+  });
+
+  // --- zoom ------------------------------------------------------------
+  const autoZoom = $('#autoZoomToggle');
+  autoZoom.checked = settings.autoZoom;
+  autoZoom.addEventListener('change', () => {
+    settings.autoZoom = autoZoom.checked;
     save();
   });
+
+  const zv = $('#zoomVehicleInput'), zf = $('#zoomFootInput');
+  zv.value = settings.zoomVehicle;
+  zf.value = settings.zoomFoot;
+  const readZoom = (input, key) => {
+    const v = Number(input.value);
+    if (!Number.isFinite(v)) return;
+    settings[key] = Math.max(-5, Math.min(3, v));
+    input.value = settings[key];
+    save();
+  };
+  zv.addEventListener('change', () => readZoom(zv, 'zoomVehicle'));
+  zf.addEventListener('change', () => readZoom(zf, 'zoomFoot'));
+
+  // --- display ---------------------------------------------------------
+  $$('input[name=units]').forEach(radio => {
+    radio.checked = radio.value === settings.units;
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      settings.units = radio.value;
+      save();
+    });
+  });
+
+  const vig = $('#vignetteToggle');
+  vig.checked = settings.vignette;
+  vig.addEventListener('change', () => {
+    settings.vignette = vig.checked;
+    save();
+    updateVignette(current ? (current.wantedLevel || 0) : 0);
+  });
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    $('#vignetteHint').textContent =
+      'Your system asks for reduced motion, so the pulse is replaced by a ' +
+      'static rim that still tracks the wanted level.';
+  }
 
   // Feed
   const mock = $('#mockToggle');
@@ -1024,11 +1237,6 @@ function wireUi() {
   $('#calApply').addEventListener('click', calApply);
   $('#calReset').addEventListener('click', calReset);
 
-  // View
-  const follow = $('#followToggle');
-  follow.checked = settings.follow;
-  follow.addEventListener('change', () => setFollow(follow.checked));
-
   const trail = $('#trailRange');
   trail.value = settings.trailLength;
   $('#trailOut').value = settings.trailLength;
@@ -1054,11 +1262,6 @@ function wireUi() {
   $('#trailClear').addEventListener('click', () => {
     trailPts = [];
     redrawTrail();
-  });
-
-  $('#recentre').addEventListener('click', () => {
-    if (current && settings.transform) map.setView(gameToLatLng(current.x, current.y));
-    else if (imageBounds) map.fitBounds(imageBounds);
   });
 
   // Map image
@@ -1091,6 +1294,14 @@ function wireUi() {
         'Still no map found. Check the setup tool finished without errors, and ' +
         'that GTA V is running so the plugin can serve it.';
     }
+  });
+
+  // Coming back to the tab: ask for a fresh sample straight away rather than
+  // waiting for the next scheduled poll, so the settling window is enough.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    becameVisibleAt = performance.now();
+    if (!settings.mock) pollOnce();
   });
 
   // Escape cancels an armed pick

@@ -12,8 +12,12 @@
 
 <div id="map" aria-label="Live map"></div>
 
+<!-- Wanted-level vignette. Above the map, below every card, and never
+     interactive — see .vignette in the stylesheet. -->
+<div id="vignette" class="vignette" aria-hidden="true"></div>
+
 <!-- ------------------------------------------------------------------ -->
-<!-- First-run: no map image chosen yet                                  -->
+<!-- First run: setup has not been run                                   -->
 <!-- ------------------------------------------------------------------ -->
 <div id="setup" class="overlay" hidden>
   <div class="card">
@@ -42,37 +46,172 @@
 </div>
 
 <!-- ------------------------------------------------------------------ -->
-<!-- Control panel                                                       -->
+<!-- HUD. Everything inside #hud hides when the UI is toggled off.       -->
 <!-- ------------------------------------------------------------------ -->
-<button id="panelToggle" class="panel-toggle" aria-expanded="true"
-        aria-controls="panel" title="Show/hide controls">&#9776;</button>
+<div id="hud">
 
-<aside id="panel" class="panel">
+  <!-- Top left: district -->
+  <div class="corner top-left">
+    <div class="chip-card" id="districtCard" hidden>
+      <span class="cap">District</span>
+      <b id="districtName">&mdash;</b>
+    </div>
+  </div>
+
+  <!-- Top right: signal light, settings, avatar -->
+  <div class="corner top-right">
+    <!-- Deliberately outside the settings panel: a dead feed must be visible
+         without opening anything, or a frozen marker looks like a paused game. -->
+    <div class="signal" id="signal" role="status" aria-live="polite">
+      <span class="signal-dot"></span><span id="signalText">Live</span>
+    </div>
+    <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings" aria-expanded="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-cog"/></svg>
+    </button>
+    <div class="avatar" id="avatar" title="Character">
+      <span id="avatarInitial">?</span>
+    </div>
+  </div>
+
+  <!-- Bottom left: vehicle -->
+  <div class="corner bottom-left">
+    <div class="vehicle-card" id="vehicleCard" hidden>
+      <b id="vehicleModel">&mdash;</b>
+      <div class="vehicle-meta">
+        <span id="vehicleColour" class="v-colour"></span>
+        <span id="vehiclePlate" class="plate"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom centre: next direction + street -->
+  <div class="corner bottom-centre">
+    <div class="nav-card" id="navCard">
+      <div class="nav-instruction" id="navInstruction" hidden>
+        <svg viewBox="0 0 24 24" class="nav-arrow" aria-hidden="true"><use href="#i-turn"/></svg>
+        <span id="navInstructionText"></span>
+      </div>
+      <b class="street" id="streetName">&mdash;</b>
+      <span class="street-sub" id="streetSub"></span>
+    </div>
+  </div>
+
+  <!-- Bottom right: speedometer + map controls -->
+  <div class="corner bottom-right">
+    <div class="speedo" id="speedo">
+      <b id="speedValue">0</b><span class="unit">mph</span>
+    </div>
+
+    <div class="controls">
+      <button class="icon-btn" id="btnRecentre" title="Recentre on player" aria-label="Recentre on player">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-crosshair"/></svg>
+      </button>
+      <button class="icon-btn" id="btnTrail" title="Toggle trail" aria-label="Toggle trail" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-trail"/></svg>
+      </button>
+      <button class="icon-btn" id="btnFollow" title="Follow player" aria-label="Follow player" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-follow"/></svg>
+      </button>
+      <button class="icon-btn" id="btnFullscreen" title="Fullscreen" aria-label="Fullscreen" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-expand"/></svg>
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Outside #hud on purpose: hiding the UI must not hide the way back. -->
+<div class="corner hide-ui">
+  <button class="icon-btn" id="btnHideUi" title="Hide interface" aria-label="Hide interface" aria-pressed="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-eye"/></svg>
+  </button>
+</div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- Settings panel (behind the cog)                                     -->
+<!-- ------------------------------------------------------------------ -->
+<aside id="panel" class="panel" hidden>
+
+  <div class="panel-head">
+    <h2>Settings</h2>
+    <button class="icon-btn small" id="panelClose" title="Close" aria-label="Close settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-close"/></svg>
+    </button>
+  </div>
 
   <section class="sect">
-    <h2>Feed</h2>
+    <h3>Trail</h3>
+    <label class="row">
+      <span class="lbl">Length</span>
+      <input type="range" id="trailRange" min="0" max="2000" step="50">
+      <output id="trailOut"></output>
+    </label>
+    <div id="trailLegend" class="legend" aria-label="Trail colours"></div>
+    <div class="row">
+      <button class="btn" id="trailClear">Clear trail</button>
+    </div>
+  </section>
+
+  <section class="sect">
+    <h3>Zoom</h3>
+    <label class="row switch">
+      <input type="checkbox" id="autoZoomToggle" checked>
+      <span>Auto-zoom <small>on entering / leaving a vehicle</small></span>
+    </label>
+    <label class="row">
+      <span class="lbl">Vehicle</span>
+      <input type="number" id="zoomVehicleInput" step="0.25" min="-5" max="3">
+    </label>
+    <label class="row">
+      <span class="lbl">On foot</span>
+      <input type="number" id="zoomFootInput" step="0.25" min="-5" max="3">
+    </label>
+    <p class="hint">
+      Higher is closer in. Zooming by hand still works; the level is reapplied
+      the next time you get in or out of a vehicle.
+    </p>
+  </section>
+
+  <section class="sect">
+    <h3>Display</h3>
+    <div class="row">
+      <span class="lbl">Units</span>
+      <div class="segmented" role="radiogroup" aria-label="Speed units">
+        <label><input type="radio" name="units" value="mph" checked><span>mph</span></label>
+        <label><input type="radio" name="units" value="kmh"><span>km/h</span></label>
+      </div>
+    </div>
+    <label class="row switch">
+      <input type="checkbox" id="vignetteToggle" checked>
+      <span>Wanted-level flash</span>
+    </label>
+    <p class="hint" id="vignetteHint">
+      A red and blue pulse at the screen edge as your wanted level rises. Turned
+      off automatically if your system asks for reduced motion.
+    </p>
+  </section>
+
+  <!-- Rarely needed, but the only recovery path if the automatic setup is
+       ever wrong — hidden rather than removed. -->
+  <details class="sect advanced">
+    <summary>Advanced</summary>
+
+    <h4>Feed</h4>
     <label class="row switch">
       <input type="checkbox" id="mockToggle">
       <span>Mock feed <small>(no game needed)</small></span>
     </label>
     <label class="row">
       <span class="lbl">Server</span>
-      <input type="text" id="serverInput" placeholder="same origin"
-             spellcheck="false" autocomplete="off">
+      <input type="text" id="serverInput" placeholder="same origin" spellcheck="false" autocomplete="off">
     </label>
-    <p class="hint">
-      Blank uses the page's own origin, which is what you want when the plugin
-      is serving this page. Otherwise e.g. <code>http://192.168.1.20:8088</code>.
-    </p>
     <p class="row status"><span class="dot" id="feedDot"></span><span id="feedStatus">Idle</span></p>
-  </section>
 
-  <section class="sect">
-    <h2>Calibration</h2>
+    <h4>Calibration</h4>
     <p class="hint" id="calSummary">Not calibrated.</p>
 
     <div class="calpoint" data-point="0">
-      <h3>Point A</h3>
+      <h5>Point A</h5>
       <div class="row">
         <button class="btn cal-capture">Capture position</button>
         <span class="chip cal-game">&mdash;</span>
@@ -84,7 +223,7 @@
     </div>
 
     <div class="calpoint" data-point="1">
-      <h3>Point B <small>far from A</small></h3>
+      <h5>Point B <small>far from A</small></h5>
       <div class="row">
         <button class="btn cal-capture">Capture position</button>
         <span class="chip cal-game">&mdash;</span>
@@ -95,71 +234,37 @@
       </div>
     </div>
 
-    <p class="hint" id="calHint">
-      Stand at a landmark in game, hit <em>Capture position</em>, then
-      <em>Pick on map</em> and click that same spot on the image. Repeat far
-      away for point&nbsp;B.
-    </p>
-
     <div class="row">
       <button class="btn primary" id="calApply" disabled>Apply</button>
       <button class="btn" id="calReset">Reset</button>
     </div>
-  </section>
 
-  <section class="sect">
-    <h2>View</h2>
-    <label class="row switch">
-      <input type="checkbox" id="followToggle" checked>
-      <span>Follow player</span>
-    </label>
-    <label class="row">
-      <span class="lbl">Trail</span>
-      <input type="range" id="trailRange" min="0" max="2000" step="50">
-      <output id="trailOut"></output>
-    </label>
-    <!-- Swatches are filled in from app.js so the colours live in one place. -->
-    <div id="trailLegend" class="legend" aria-label="Trail colours"></div>
-
-    <div class="row">
-      <button class="btn" id="trailClear">Clear trail</button>
-      <button class="btn" id="recentre">Recentre</button>
-    </div>
-  </section>
-
-  <section class="sect">
-    <h2>Map image</h2>
+    <h4>Map image</h4>
     <label class="filebtn small">
       <input type="file" id="mapFile" accept="image/*">
       <span>Replace image&hellip;</span>
     </label>
     <p class="hint" id="imgInfo"></p>
-  </section>
+  </details>
 
 </aside>
 
-<!-- ------------------------------------------------------------------ -->
-<!-- HUD                                                                 -->
-<!-- ------------------------------------------------------------------ -->
-<div id="hud" class="hud">
-  <div class="hud-item speed">
-    <b id="hudSpeed">0</b><span class="unit">mph</span>
-  </div>
-  <div class="hud-item">
-    <span class="cap">Vehicle</span><b id="hudVehicle">&mdash;</b>
-  </div>
-  <div class="hud-item">
-    <span class="cap">Wanted</span><b id="hudWanted" class="stars">&mdash;</b>
-  </div>
-  <div class="hud-item">
-    <span class="cap">Time</span><b id="hudClock">--:--</b>
-  </div>
-  <div class="hud-item">
-    <span class="cap">World</span><b id="hudPos" class="mono">&mdash;</b>
-  </div>
-</div>
-
 <div id="toast" class="toast" hidden></div>
+
+<!-- Icon sprite. Inline so there is no extra request and no build step. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <g id="i-cog"><path d="M12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Zm7.4-2.6.9-.7a.7.7 0 0 0 .2-.9l-1.7-3a.7.7 0 0 0-.8-.3l-1.1.4a7.6 7.6 0 0 0-1.6-.9l-.2-1.2a.7.7 0 0 0-.7-.6h-3.4a.7.7 0 0 0-.7.6l-.2 1.2c-.6.2-1.1.5-1.6.9l-1.1-.4a.7.7 0 0 0-.8.3l-1.7 3a.7.7 0 0 0 .2.9l.9.7a7 7 0 0 0 0 1.9l-.9.7a.7.7 0 0 0-.2.9l1.7 3a.7.7 0 0 0 .8.3l1.1-.4c.5.4 1 .7 1.6.9l.2 1.2a.7.7 0 0 0 .7.6h3.4a.7.7 0 0 0 .7-.6l.2-1.2c.6-.2 1.1-.5 1.6-.9l1.1.4a.7.7 0 0 0 .8-.3l1.7-3a.7.7 0 0 0-.2-.9l-.9-.7a7 7 0 0 0 0-1.9Z"/></g>
+    <g id="i-crosshair"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/><path d="M13 2h-2v3.06A7 7 0 0 0 5.06 11H2v2h3.06A7 7 0 0 0 11 18.94V22h2v-3.06A7 7 0 0 0 18.94 13H22v-2h-3.06A7 7 0 0 0 13 5.06Zm-1 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10Z"/></g>
+    <g id="i-trail"><path d="M4 18c3 0 3-4 6-4s3 4 6 4 4-3 4-3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="4" cy="18" r="2"/><circle cx="20" cy="8" r="2"/></g>
+    <g id="i-follow"><path d="M12 2 4.5 20l7.5-4 7.5 4Z"/></g>
+    <g id="i-expand"><path d="M4 9V4h5v2H6v3Zm11-5h5v5h-2V6h-3Zm5 11v5h-5v-2h3v-3ZM9 20H4v-5h2v3h3Z"/></g>
+    <g id="i-eye"><path d="M12 5c-5 0-9 4.5-9 7s4 7 9 7 9-4.5 9-7-4-7-9-7Zm0 11.5A4.5 4.5 0 1 1 12 7.5a4.5 4.5 0 0 1 0 9Zm0-2.2a2.3 2.3 0 1 0 0-4.6 2.3 2.3 0 0 0 0 4.6Z"/></g>
+    <g id="i-eye-off"><path d="M3.3 2 2 3.3l3.2 3.2C3.5 7.9 2.4 9.7 2 11c1 3 5 7 10 7 1.7 0 3.3-.5 4.7-1.2l3 3 1.3-1.3Zm5.4 8 5.3 5.3A4.5 4.5 0 0 1 8.7 10ZM12 5c-1 0-1.9.2-2.8.4l1.7 1.7A4.5 4.5 0 0 1 16.5 12c0 .4 0 .8-.2 1.1l2.7 2.7c1.4-1.2 2.4-2.7 3-3.8-1-3-5-7-10-7Z"/></g>
+    <g id="i-close"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7l1.4-1.4L10.6 10.6l6.3-6.3Z"/></g>
+    <g id="i-turn"><path d="M11 20V9.8L7.4 13.4 6 12l6-6 6 6-1.4 1.4L13 9.8V20Z"/></g>
+  </defs>
+</svg>
 
 <script src="vendor/leaflet.js"></script>
 <script src="app.js"></script>

@@ -1,4 +1,16 @@
-/* GTA V Live Map — client styles. No framework, no build step. */
+/*
+ * GTA V Live Map — satnav layout.
+ *
+ * Cards float in the corners over a full-bleed map. Nothing is a sidebar; the
+ * map is the interface and everything else sits on top of it.
+ *
+ * Sizing targets roughly a 1280x720 CSS viewport, which is what a 1920x1080
+ * display at 150% scaling actually reports — so there is less room than the
+ * physical resolution suggests, and cards have to stay compact.
+ *
+ * Visual identity is deliberately NOT settled here; this is the current theme
+ * rearranged into the new layout. See TODO item 2.
+ */
 
 :root {
   --bg:        #0d1014;
@@ -10,10 +22,13 @@
   --accent:    #47c1ff;
   --accent-dk: #1b7fb0;
   --good:      #3fb950;
-  --warn:      #d29922;
   --bad:       #f85149;
   --star:      #ffd23f;
-  --radius:    8px;
+
+  --radius:    10px;
+  --gap:       10px;
+  --card-bg:   rgba(18, 23, 30, .88);
+  --shadow:    0 4px 16px rgba(0, 0, 0, .45);
 }
 
 * { box-sizing: border-box; }
@@ -21,160 +36,343 @@
 html, body {
   margin: 0;
   height: 100%;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text);
   font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   overscroll-behavior: none;
 }
 
-#map {
-  position: absolute;
-  inset: 0;
-  background: var(--bg);
-}
+#map { position: absolute; inset: 0; background: var(--bg); }
 
-/* Leaflet's default attribution/zoom on a dark ground */
 .leaflet-container { background: var(--bg); outline: none; }
-.leaflet-control-attribution {
-  background: rgba(13,16,20,.75) !important;
-  color: var(--muted) !important;
-}
-.leaflet-control-attribution a { color: var(--muted) !important; }
-.leaflet-bar a {
-  background: var(--panel) !important;
-  color: var(--text) !important;
-  border-bottom-color: var(--line) !important;
-}
-.leaflet-bar a:hover { background: var(--panel-2) !important; }
-
-/* Crosshair cursor while arming a calibration click */
-.picking .leaflet-container { cursor: crosshair; }
+/* The corner cards replace Leaflet's own chrome. */
+.leaflet-control-container { display: none; }
 
 /* ------------------------------------------------------------------ */
-/* First-run overlay                                                   */
+/* Wanted-level vignette                                               */
 /* ------------------------------------------------------------------ */
-.overlay {
+/*
+ * Above the map, below every card, never interactive. Intensity is driven by
+ * --w (0..1) so one rule covers every wanted level, and only opacity and
+ * background animate — both compositor-friendly, so the marker keeps moving
+ * smoothly underneath.
+ */
+.vignette {
   position: absolute;
   inset: 0;
-  z-index: 1200;
+  z-index: 300;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .5s ease;
+  --w: 0;
+}
+.vignette.on { opacity: 1; }
+.vignette::before,
+.vignette::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* Edge only — the middle of the screen is the part being used. */
+  background: radial-gradient(ellipse at center,
+              transparent calc(58% - var(--w) * 18%),
+              var(--vig, #f8514933) 100%);
+  transition: opacity .45s ease;
+}
+.vignette::before { --vig: rgba(248, 81, 73, .85); }
+.vignette::after  { --vig: rgba(70, 130, 255, .85); opacity: 0; }
+
+/* Alternating red/blue, only when motion is welcome. */
+.vignette.flash::before { animation: vig-a 1.1s steps(1, end) infinite; }
+.vignette.flash::after  { animation: vig-b 1.1s steps(1, end) infinite; }
+@keyframes vig-a { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes vig-b { 0%, 49% { opacity: 0; } 50%, 100% { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Static red rim still conveys the level, without the flicker. */
+  .vignette.flash::before,
+  .vignette.flash::after { animation: none; }
+  .vignette.flash::after { opacity: 0; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Corner regions                                                      */
+/* ------------------------------------------------------------------ */
+.corner {
+  position: absolute;
+  z-index: 500;
+  display: flex;
+  gap: var(--gap);
+  pointer-events: none;   /* only the controls themselves take clicks */
+}
+.corner > * { pointer-events: auto; }
+
+.top-left      { top: var(--gap); left: var(--gap); }
+.top-right     { top: var(--gap); right: var(--gap); align-items: center; }
+.bottom-left   { bottom: var(--gap); left: var(--gap); }
+.bottom-right  { bottom: var(--gap); right: var(--gap); align-items: flex-end; }
+.bottom-centre {
+  bottom: var(--gap);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(420px, 46vw);
+}
+
+/* Sits below the control stack, and outside #hud so it survives hiding. */
+.hide-ui {
+  bottom: var(--gap);
+  right: var(--gap);
+  z-index: 600;
+}
+
+/* ------------------------------------------------------------------ */
+/* Hide UI                                                             */
+/* ------------------------------------------------------------------ */
+#hud { transition: opacity .18s ease; }
+#hud[hidden] { display: none; }
+body.ui-hidden .panel { display: none; }
+
+/* ------------------------------------------------------------------ */
+/* Signal light                                                        */
+/* ------------------------------------------------------------------ */
+/* No card, no background — a recording light, not a widget. */
+.signal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--good);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .9);
+}
+.signal-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--good);
+  box-shadow: 0 0 6px var(--good);
+}
+.signal.lost { color: var(--bad); }
+.signal.lost .signal-dot {
+  background: var(--bad);
+  box-shadow: 0 0 6px var(--bad);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  .signal.lost .signal-dot { animation: none; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Buttons and avatar                                                  */
+/* ------------------------------------------------------------------ */
+.icon-btn {
   display: grid;
   place-items: center;
-  background: rgba(8,10,13,.86);
-  backdrop-filter: blur(3px);
-  padding: 20px;
-}
-.overlay[hidden] { display: none; }
-.card {
-  width: min(460px, 100%);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 24px;
-}
-.card h1 { margin: 0 0 12px; font-size: 20px; }
-.card p { margin: 0 0 12px; color: var(--muted); }
-.card p.muted { font-size: 12px; }
-
-.card .cmd {
-  margin: 0 0 14px;
-  padding: 10px 12px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  font: 11px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace;
-  white-space: pre-wrap;
-  word-break: break-all;
-  user-select: all;
-}
-
-.setup-actions { flex-wrap: wrap; gap: 10px; margin-top: 4px; }
-#setupStatus:empty { display: none; }
-
-/* ------------------------------------------------------------------ */
-/* Control panel                                                       */
-/* ------------------------------------------------------------------ */
-.panel-toggle {
-  position: absolute;
-  top: 10px; left: 10px;
-  z-index: 1100;
-  width: 38px; height: 38px;
+  width: 40px; height: 40px;
+  padding: 0;
+  background: var(--card-bg);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--panel);
+  box-shadow: var(--shadow);
   color: var(--text);
-  font-size: 17px;
   cursor: pointer;
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
 }
-.panel-toggle:hover { background: var(--panel-2); }
+.icon-btn svg { width: 20px; height: 20px; fill: currentColor; }
+.icon-btn:hover { background: var(--panel-2); border-color: var(--accent-dk); }
+.icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.icon-btn.small { width: 30px; height: 30px; border: 0; background: none; box-shadow: none; }
+.icon-btn.small svg { width: 16px; height: 16px; }
 
+/* Toggles read as lit when active. */
+.icon-btn[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent-dk);
+  background: rgba(27, 127, 176, .22);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  font-weight: 700;
+  color: var(--muted);
+  overflow: hidden;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ------------------------------------------------------------------ */
+/* Cards                                                               */
+/* ------------------------------------------------------------------ */
+.chip-card, .vehicle-card, .nav-card, .speedo {
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(6px);
+}
+[hidden] { display: none !important; }
+
+.cap {
+  display: block;
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* District — deliberately tiny */
+.chip-card { padding: 5px 10px; }
+.chip-card b { font-size: 13px; font-weight: 600; }
+
+/* Vehicle */
+.vehicle-card { padding: 8px 12px; min-width: 150px; }
+.vehicle-card b { display: block; font-size: 15px; font-weight: 600; }
+.vehicle-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.v-colour { display: inline-flex; align-items: center; gap: 5px; }
+.v-colour::before {
+  content: "";
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  background: var(--swatch, #666);
+  outline: 1px solid rgba(0, 0, 0, .5);
+}
+.plate {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, .35);
+  font: 600 11px/1.4 ui-monospace, Consolas, monospace;
+  letter-spacing: .06em;
+  color: var(--text);
+}
+
+/* Nav strip — the one card that gets centre stage */
+.nav-card {
+  padding: 8px 16px;
+  text-align: center;
+  transition: opacity .25s ease;
+}
+.nav-instruction {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 2px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.nav-arrow { width: 20px; height: 20px; fill: currentColor; }
+.nav-card .street {
+  display: block;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav-card .street-sub {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+.nav-card .street-sub:empty { display: none; }
+/* Stale feed: dim rather than lie about where you are. */
+.nav-card.stale { opacity: .4; }
+
+/* Speedometer — beside the controls, not in them */
+.speedo {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 6px 12px;
+  margin-right: 2px;
+}
+.speedo b { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.speedo .unit { font-size: 10px; color: var(--muted); }
+
+/* Control stack */
+.controls { display: flex; flex-direction: column; gap: 6px; }
+/* Leave room for the hide-UI button that sits below, outside #hud. */
+.bottom-right { padding-bottom: 46px; }
+
+/* ------------------------------------------------------------------ */
+/* Settings panel                                                      */
+/* ------------------------------------------------------------------ */
 .panel {
   position: absolute;
-  top: 58px; left: 10px; bottom: 10px;
-  z-index: 1100;
+  top: 60px; right: var(--gap); bottom: var(--gap);
+  z-index: 700;
   width: 300px;
   max-width: calc(100vw - 20px);
   overflow-y: auto;
-  padding: 4px 14px 14px;
+  padding: 0 14px 14px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
-  transition: transform .18s ease, opacity .18s ease;
+  box-shadow: var(--shadow);
 }
-.panel.collapsed {
-  transform: translateX(calc(-100% - 14px));
-  opacity: 0;
-  pointer-events: none;
+.panel[hidden] { display: none; }
+
+.panel-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0 8px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
 }
+.panel-head h2 { margin: 0; font-size: 14px; }
 
 .sect { padding: 12px 0; border-bottom: 1px solid var(--line); }
 .sect:last-child { border-bottom: 0; }
-.sect h2 {
+.sect h3 {
   margin: 0 0 10px;
   font-size: 11px;
   letter-spacing: .09em;
   text-transform: uppercase;
   color: var(--muted);
 }
-.sect h3 { margin: 10px 0 6px; font-size: 13px; }
-.sect h3 small, .switch small { color: var(--muted); font-weight: 400; }
+.sect h4 { margin: 14px 0 6px; font-size: 12px; color: var(--muted); }
+.sect h5 { margin: 10px 0 4px; font-size: 12px; }
+.sect h5 small, .switch small { color: var(--muted); font-weight: 400; }
 
-.row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 0;
+.advanced > summary {
+  cursor: pointer;
+  padding: 10px 0 2px;
+  font-size: 11px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
-.row .lbl { color: var(--muted); min-width: 46px; }
+.advanced > summary:hover { color: var(--text); }
+
+.row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.row .lbl { color: var(--muted); min-width: 58px; }
 .switch { cursor: pointer; }
 .switch input { accent-color: var(--accent); width: 16px; height: 16px; }
 
 .hint { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
-
-/* Trail colour key */
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  margin: 8px 0 2px;
-}
-.legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.legend i {
-  width: 14px;
-  height: 4px;
-  border-radius: 2px;
-  /* Matches the casing the trail itself is drawn with. */
-  outline: 1px solid rgba(11, 14, 18, .55);
-}
 .hint code { color: var(--text); }
 
-input[type=text] {
+input[type=text], input[type=number] {
   flex: 1;
   min-width: 0;
   padding: 6px 8px;
@@ -184,9 +382,22 @@ input[type=text] {
   color: var(--text);
   font: inherit;
 }
-input[type=text]:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
 input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
 output { color: var(--muted); min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Units switch */
+.segmented { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented span {
+  display: block;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.segmented input:checked + span { background: var(--accent-dk); color: var(--text); }
+.segmented input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .btn {
   padding: 6px 11px;
@@ -201,21 +412,11 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
 .btn:hover:not(:disabled) { border-color: var(--accent-dk); }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn.primary { background: var(--accent-dk); border-color: var(--accent-dk); }
-.btn.primary:hover:not(:disabled) { background: var(--accent); color: #06121a; }
-.btn.armed {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #06121a;
-}
+.btn.armed { background: var(--accent); border-color: var(--accent); color: #06121a; }
 
 .filebtn { display: inline-block; position: relative; cursor: pointer; }
 .filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.filebtn span {
-  display: inline-block;
-  padding: 9px 14px;
-  background: var(--accent-dk);
-  border-radius: 6px;
-}
+.filebtn span { display: inline-block; padding: 9px 14px; background: var(--accent-dk); border-radius: 6px; }
 .filebtn.small span { padding: 6px 11px; background: var(--panel-2); border: 1px solid var(--line); }
 
 .chip {
@@ -225,70 +426,74 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 5px;
-  font: 11px/1.3 ui-monospace, "Cascadia Code", Consolas, monospace;
+  font: 11px/1.3 ui-monospace, Consolas, monospace;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .chip.set { color: var(--good); border-color: #26492e; }
-
 .calpoint { padding: 4px 0 8px; }
 
-.status .dot {
-  width: 9px; height: 9px;
-  border-radius: 50%;
-  background: var(--muted);
-  flex: 0 0 auto;
-}
+.status .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
 .status .dot.live { background: var(--good); box-shadow: 0 0 7px var(--good); }
 .status .dot.mock { background: var(--accent); box-shadow: 0 0 7px var(--accent); }
 .status .dot.err  { background: var(--bad); }
 #feedStatus { font-size: 12px; color: var(--muted); }
 
-/* ------------------------------------------------------------------ */
-/* HUD                                                                 */
-/* ------------------------------------------------------------------ */
-.hud {
-  position: absolute;
-  right: 10px; top: 10px;
-  z-index: 1100;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-width: calc(100vw - 20px);
-}
-.hud-item {
-  display: flex;
-  flex-direction: column;
-  min-width: 62px;
-  padding: 6px 10px;
-  background: rgba(22,27,34,.92);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-.hud-item .cap {
-  font-size: 9px;
-  letter-spacing: .09em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.hud-item b { font-size: 15px; font-weight: 600; }
-.hud-item .mono { font: 11px/1.5 ui-monospace, Consolas, monospace; }
-.hud-item.speed { flex-direction: row; align-items: baseline; gap: 4px; }
-.hud-item.speed b { font-size: 26px; font-variant-numeric: tabular-nums; }
-.hud-item.speed .unit { font-size: 10px; color: var(--muted); }
-.stars { color: var(--star); letter-spacing: 1px; }
+/* Trail colour key */
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 8px 0 2px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.legend i { width: 14px; height: 4px; border-radius: 2px; outline: 1px solid rgba(11, 14, 18, .55); }
 
 /* ------------------------------------------------------------------ */
-/* Player marker + calibration pins                                    */
+/* Setup overlay                                                       */
+/* ------------------------------------------------------------------ */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 900;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 10, 13, .86);
+  backdrop-filter: blur(3px);
+  padding: 20px;
+}
+.overlay[hidden] { display: none; }
+.card {
+  width: min(460px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+}
+.card h1 { margin: 0 0 12px; font-size: 20px; }
+.card p { margin: 0 0 12px; color: var(--muted); }
+.card p.muted { font-size: 12px; }
+.card .cmd {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: 11px/1.6 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: all;
+}
+.setup-actions { flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+#setupStatus:empty { display: none; }
+
+/* ------------------------------------------------------------------ */
+/* Player marker and calibration pins                                  */
 /* ------------------------------------------------------------------ */
 .player-marker { width: 30px; height: 30px; }
 .player-marker svg {
   width: 30px; height: 30px;
   display: block;
   transform-origin: 50% 50%;
-  filter: drop-shadow(0 0 4px rgba(0,0,0,.9));
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, .9));
 }
 .player-marker .body { fill: var(--accent); stroke: #06121a; stroke-width: 1.4; }
 
@@ -299,34 +504,34 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
   margin: -11px 0 0 -11px;
   border: 2px solid var(--star);
   border-radius: 50%;
-  background: rgba(255,210,63,.22);
+  background: rgba(255, 210, 63, .22);
   color: var(--star);
   font: 700 11px/1 system-ui, sans-serif;
 }
+.picking .leaflet-container { cursor: crosshair; }
 
 /* ------------------------------------------------------------------ */
 /* Toast                                                               */
 /* ------------------------------------------------------------------ */
 .toast {
   position: absolute;
-  left: 50%; bottom: 24px;
-  z-index: 1300;
+  left: 50%; bottom: 90px;
+  z-index: 800;
   transform: translateX(-50%);
   padding: 9px 16px;
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 20px;
-  box-shadow: 0 6px 20px rgba(0,0,0,.5);
+  box-shadow: var(--shadow);
 }
 .toast[hidden] { display: none; }
 
 /* ------------------------------------------------------------------ */
-/* Phone                                                               */
+/* Narrow screens                                                      */
 /* ------------------------------------------------------------------ */
 @media (max-width: 640px) {
-  .panel { width: calc(100vw - 20px); top: 54px; }
-  .hud { right: 6px; top: 6px; gap: 4px; }
-  .hud-item { min-width: 0; padding: 4px 8px; }
-  .hud-item.speed b { font-size: 20px; }
-  .hud-item:nth-child(5) { display: none; }  /* world coords: desktop only */
+  .bottom-centre { max-width: calc(100vw - 100px); }
+  .vehicle-card { min-width: 0; }
+  .speedo b { font-size: 20px; }
+  .panel { width: calc(100vw - 20px); }
 }

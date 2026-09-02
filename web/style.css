@@ -253,16 +253,6 @@ body.ui-hidden .panel { display: none; }
 }
 [hidden] { display: none !important; }
 
-/* Card text runs about 20% larger than a desktop app would use — this is read
-   from a sofa, not from a desk. */
-.cap {
-  display: block;
-  font-size: 11px;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
 /* Vehicle */
 .vehicle-card { padding: 10px 15px; min-width: 165px; }
 /*

@@ -574,6 +574,13 @@ let mockHeading = 0;
 let mockWasDead = false;
 const MOCK_DEATH_PERIOD_MS = 45000;   // how often the mock dies
 
+/* HUD colours as GET_HUD_COLOUR reports them, so the mock matches the game. */
+const MOCK_CHARACTERS = [
+  { name: "Michael",  colour: "#9bc3e8" },
+  { name: "Franklin", colour: "#abedab" },
+  { name: "Trevor",   colour: "#f0b48f" }
+];
+
 function mockPos(theta) {
   const R = 1400 * (1 + 0.12 * Math.sin(3 * theta));
   return { x: 200 + R * Math.cos(theta), y: 200 + R * Math.sin(theta), R };
@@ -672,6 +679,10 @@ function mockTick() {
     streetName:     place.street,
     crossingStreet: place.crossing,
     zoneName:       place.zone,
+    // Cycles the three protagonists, with the game's own HUD colours, so the
+    // avatar can be exercised without switching character in game.
+    character:      MOCK_CHARACTERS[Math.floor(t / 15000) % MOCK_CHARACTERS.length].name,
+    characterColor: MOCK_CHARACTERS[Math.floor(t / 15000) % MOCK_CHARACTERS.length].colour,
     wantedLevel: Math.floor(t / 25000) % 6,
     isDead:     dead && !arrestTurn,
     isArrested: dead && arrestTurn,
@@ -1241,6 +1252,7 @@ function updateHud() {
   // The clock applies on foot as much as in a vehicle, so it sits above the
   // guard below rather than inside it.
   updateClock(s);
+  updateAvatar(s);
 
   /*
    * Speed, revs and the tell-tales are all vehicle instruments, so the whole
@@ -1794,6 +1806,49 @@ async function fetchPlateArt() {
   }
 }
 
+/*
+ * The protagonist portraits — the same pictures the in-game phone shows
+ * against a contact. Null until loaded, and it may stay null: Rockstar
+ * artwork, extracted from your own install and never committed.
+ */
+let portraitArt = null;
+
+async function fetchPortraits() {
+  try {
+    const r = await fetch(serverBase() + '/portraits/portraits.json', { cache: 'no-store' });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * The character avatar: their phone portrait, ringed in the colour the game
+ * uses for them. Both come from the game — the colour is read with
+ * GET_HUD_COLOUR rather than being a guess at "Franklin green".
+ *
+ * Without the artwork it falls back to an initial on that same colour, and
+ * without a recognised character to a neutral "?".
+ */
+function updateAvatar(s) {
+  const el = $('#avatar');
+  const name = s.character || null;
+  const known = !!name;
+
+  el.classList.toggle('known', known);
+  if (s.characterColor) el.style.setProperty('--char-colour', s.characterColor);
+  else el.style.removeProperty('--char-colour');
+
+  const hasArt = !!(known && portraitArt && portraitArt[name]);
+  el.classList.toggle('has-portrait', hasArt);
+  if (hasArt) el.style.setProperty('--char-portrait', 'url("portraits/' + portraitArt[name] + '")');
+  else el.style.removeProperty('--char-portrait');
+
+  $('#avatarInitial').textContent = known ? name.charAt(0) : '?';
+  el.title = known ? name : 'Character';
+}
+
 /** The setup tool's manifest, or null if setup has not been run. */
 async function fetchManifest() {
   try {
@@ -1874,6 +1929,7 @@ async function init() {
   // Independent of the map, and not worth blocking it: if the artwork is not
   // there the plate simply draws itself.
   fetchPlateArt().then(a => { plateArt = a; });
+  fetchPortraits().then(a => { portraitArt = a; });
 
   initMap(manifestHasTiles(manifest) ? manifest.height : 0);
   wireUi();

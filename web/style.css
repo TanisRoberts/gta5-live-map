@@ -213,18 +213,32 @@ body.ui-hidden .panel { display: none; }
 }
 .icon-btn[aria-pressed="true"]:hover { background: #6bcfff; border-color: #6bcfff; }
 
+/*
+ * The character avatar: their phone portrait, ringed in the colour the game
+ * uses for them. Those HUD colours are pale by design, so the ring reads well
+ * against the dark card while dark text reads well on top of the colour when
+ * there is no portrait to show.
+ */
 .avatar {
   display: grid;
   place-items: center;
   width: 40px; height: 40px;
   border-radius: 50%;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
+  border: 2px solid var(--char-colour, var(--line));
+  background-color: var(--char-colour, var(--panel-2));
+  background-image: var(--char-portrait);
+  background-size: cover;
+  /* The portraits are head-and-shoulders, so bias upward or the circle crops
+     the face and keeps the chest. */
+  background-position: center 22%;
   box-shadow: var(--shadow);
-  font-weight: 700;
-  color: var(--muted);
+  font: 700 17px/1 system-ui, sans-serif;
+  color: #10141a;
   overflow: hidden;
 }
+/* No recognised character: nothing to colour, so stay neutral. */
+.avatar:not(.known) { color: var(--muted); }
+.avatar.has-portrait #avatarInitial { display: none; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
 
 /* ------------------------------------------------------------------ */

@@ -80,17 +80,28 @@ returns a label key ("VAPID") which the text table resolves to "Vapid", giving
 "Mammoth Patriot" rather than a bare "Patriot". It does not answer for every
 model, so the model alone stays the fallback.
 
-**c. Top right — cog button and character avatar.** Settings content already
-exists; it is the current panel behind a cog.
+**c. Top right — cog button and character avatar — DONE.**
 
-The avatar is **the one remaining piece of plugin work in the whole backlog** —
-the active character has to be identified from the player ped's model hash and
-added to the feed. Small, but it means one more build-and-Insert cycle.
+The plugin identifies the protagonist from the player ped model and sends
+`character` with `characterColor`. The avatar shows their phone portrait ringed
+in that colour.
 
-- **The artwork is Rockstar's.** Character portraits cannot be committed here,
-  same rule as the map image. Either generate a neutral avatar (an initial, or a
-  silhouette in the character's colour), or treat portraits as a user-supplied
-  local asset like the map itself.
+Two things turned out better than this item expected:
+
+- **The colour is read, not chosen.** `GET_HUD_COLOUR` with `HudColor.Michael`
+  / `Franklin` / `Trevor` returns the game's own values, so "Franklin green" is
+  `#abedab` because the game says so, and a patch that retunes them is followed
+  automatically. It is resolved only when the ped model changes, not per tick.
+- **The portrait and the phone picture are the same asset.** `char_michael.ytd`
+  and friends in `scaleform_generic.rpf` hold one 64x64 texture each — exactly
+  what the in-game phone shows against a contact. So both ideas for this item
+  landed on the same file.
+
+The artwork rule still holds: extracted from your own install by
+`TileRipper --portraits`, written to the gitignored `web/portraits/`, never
+committed. Without it the avatar falls back to the character initial on their
+colour, and without a recognised character to a neutral "?" — a mission ped or
+a custom skin gets no invented identity.
 
 **d. Bottom centre — next direction and street.** The street half is buildable
 today: `streetName`, `crossingStreet` and `zoneName` all ship now.

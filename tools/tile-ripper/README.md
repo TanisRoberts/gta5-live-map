@@ -72,9 +72,24 @@ tools\tile-ripper\bin\Release\net48\TileRipper.exe --game "<GTA V folder>" --out
 | `--game` | GTA V install folder. Enhanced and Legacy are both detected automatically. |
 | `--out` | Output folder. Default `map-out`. |
 | `--keep-tiles` | Also write the individual tiles, not just the composite. |
+| `--plates` | Extract the thirteen number-plate designs instead of the map, plus `plates.json`. |
+| `--portraits` | Extract the three protagonist phone portraits, plus `portraits.json`. |
+| `--find <text>` | List archive paths containing `text`. Research aid. |
+| `--dump <path>` | Write one file out of the archives. Research aid. |
+| `--textures <path>` | List the textures inside a `.ytd`. Research aid. |
 
 Output is `gtav-map.png` plus a `{z}/{x}/{y}` tile pyramid, 8192 x 12288 by
 default.
+
+The client expects the extra artwork under `web/`, so run those two against it:
+
+```
+TileRipper.exe --game "<GTA V folder>" --plates    --out web
+TileRipper.exe --game "<GTA V folder>" --portraits --out web
+```
+
+Both write into gitignored folders. The artwork is Rockstar's and stays on
+your machine, exactly like the map.
 
 ## Why the map is drawn, not extracted
 

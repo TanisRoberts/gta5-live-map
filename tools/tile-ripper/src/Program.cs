@@ -56,10 +56,13 @@ namespace GtaLiveMap.TileRipper
             {
                 Console.Error.WriteLine("usage: TileRipper --game <GTA V folder> [--out <dir>]");
                 Console.Error.WriteLine("                 [--source vector|raster] [--width N] [--keep-tiles]");
+                Console.Error.WriteLine("                 [--plates] [--portraits]");
                 Console.Error.WriteLine();
                 Console.Error.WriteLine("  --source  vector (default) renders the minimap geometry, which has no");
                 Console.Error.WriteLine("            resolution limit. raster uses the low-res minimap textures.");
                 Console.Error.WriteLine("  --width   output width in pixels, 1024-16384. Default 8192.");
+                Console.Error.WriteLine("  --plates     extract the number-plate artwork instead of the map.");
+                Console.Error.WriteLine("  --portraits  extract the protagonist phone portraits.");
                 return 2;
             }
 
@@ -99,6 +102,8 @@ namespace GtaLiveMap.TileRipper
                 string dump = Arg(args, "--dump", null);
                 string textures = Arg(args, "--textures", null);
                 bool plates = HasFlag(args, "--plates");
+                bool portraits = HasFlag(args, "--portraits");
+                if (portraits) return ExtractPortraits(outDir);
                 if (plates) return ExtractPlates(outDir);
                 if (find != null || dump != null || textures != null)
                     return Probe(find, dump, textures, outDir);
@@ -392,6 +397,108 @@ namespace GtaLiveMap.TileRipper
             File.WriteAllText(Path.Combine(dir, "plates.json"), json.ToString());
             Console.WriteLine("Wrote " + Path.Combine(dir, "plates.json"));
             return 0;
+        }
+
+        /// <summary>
+        /// The three protagonists, as the phone contact pictures the game uses
+        /// for them.
+        /// </summary>
+        private static readonly string[] PortraitNames = { "Michael", "Franklin", "Trevor" };
+
+        /// <summary>
+        /// Extracts the protagonist portraits to PNG.
+        ///
+        /// They live one per dictionary in scaleform_generic.rpf, as a single
+        /// 64x64 texture -- these are the pictures the in-game phone shows
+        /// against a contact, which is exactly the look wanted here.
+        ///
+        /// Rockstar artwork again, so it lands in the local output folder and
+        /// is never committed, the same as the map and the plates.
+        /// </summary>
+        private static int ExtractPortraits(string outDir)
+        {
+            string dir = Path.Combine(outDir, "portraits");
+            Directory.CreateDirectory(dir);
+            int written = 0;
+            List<string> got = new List<string>();
+
+            for (int i = 0; i < PortraitNames.Length; i++)
+            {
+                string want = "char_" + PortraitNames[i].ToLowerInvariant() + ".ytd";
+                string chosen = null;
+
+                // A DLC copy supersedes the base one, so prefer an update path
+                // when both exist.
+                foreach (RpfFile rpf in _mgr.AllRpfs)
+                {
+                    if (rpf.AllEntries == null) continue;
+                    foreach (RpfEntry e in rpf.AllEntries)
+                    {
+                        if (e.Path == null) continue;
+                        if (!e.Path.EndsWith(want, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (chosen == null) chosen = e.Path;
+                        if (e.Path.StartsWith("update", StringComparison.OrdinalIgnoreCase))
+                        {
+                            chosen = e.Path;
+                            break;
+                        }
+                    }
+                }
+
+                if (chosen == null)
+                {
+                    Console.WriteLine("  " + PortraitNames[i] + ": " + want + " not found");
+                    continue;
+                }
+
+                RpfFileEntry fe = _mgr.GetEntry(chosen) as RpfFileEntry;
+                if (fe == null) { Console.WriteLine("  " + PortraitNames[i] + ": unreadable entry"); continue; }
+
+                YtdFile ytd = new YtdFile();
+                try { ytd.Load(_mgr.GetFileData(chosen), fe); }
+                catch (Exception ex) { Console.WriteLine("  " + PortraitNames[i] + ": " + ex.Message); continue; }
+
+                if (ytd.TextureDict == null || ytd.TextureDict.Dict == null)
+                {
+                    Console.WriteLine("  " + PortraitNames[i] + ": no texture dictionary");
+                    continue;
+                }
+
+                Texture tex = null;
+                foreach (Texture t in ytd.TextureDict.Dict.Values) { tex = t; break; }
+                if (tex == null) { Console.WriteLine("  " + PortraitNames[i] + ": empty dictionary"); continue; }
+
+                byte[] px = DDSIO.GetPixels(tex, 0);
+                if (px == null) { Console.WriteLine("  " + PortraitNames[i] + ": could not decode"); continue; }
+
+                using (Bitmap bmp = new Bitmap(tex.Width, tex.Height, PixelFormat.Format32bppArgb))
+                {
+                    BitmapData bits = bmp.LockBits(new Rectangle(0, 0, tex.Width, tex.Height),
+                                                   ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                    Marshal.Copy(px, 0, bits.Scan0, Math.Min(tex.Width * tex.Height * 4, px.Length));
+                    bmp.UnlockBits(bits);
+                    bmp.Save(Path.Combine(dir, PortraitNames[i] + ".png"), ImageFormat.Png);
+                }
+
+                written++;
+                got.Add(PortraitNames[i]);
+                Console.WriteLine("  " + PortraitNames[i].PadRight(9) + " <- " + tex.Name +
+                                  "  " + tex.Width + "x" + tex.Height + "  (" + chosen + ")");
+            }
+
+            // A manifest, so the client knows what exists without probing for it.
+            StringBuilder pj = new StringBuilder();
+            pj.Append("{").Append(Environment.NewLine);
+            for (int k = 0; k < got.Count; k++)
+            {
+                if (k > 0) pj.Append(",").Append(Environment.NewLine);
+                pj.Append("  \"").Append(got[k]).Append("\": \"").Append(got[k]).Append(".png\"");
+            }
+            pj.Append(Environment.NewLine).Append("}").Append(Environment.NewLine);
+            File.WriteAllText(Path.Combine(dir, "portraits.json"), pj.ToString());
+
+            Console.WriteLine("Wrote " + written + " portrait(s) and portraits.json to " + dir);
+            return written > 0 ? 0 : 2;
         }
 
         private static Texture FindTexture(YtdFile ytd, string name)

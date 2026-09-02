@@ -37,4 +37,20 @@
     <Error Text="CodeWalker.Core.dll not found at '$(CodeWalkerCorePath)'. Run tools\tile-ripper\build.ps1, which builds it for you." />
   </Target>
 
+  <!--
+    CodeWalker.Core reads these at runtime from its own folder. Without
+    ShadersGen9Conversion.xml every .ydd load throws, which silently costs us
+    the whole vector map, so they must sit next to our exe too.
+  -->
+  <Target Name="CopyCodeWalkerData" AfterTargets="Build" Condition="Exists('$(CodeWalkerCorePath)')">
+    <PropertyGroup>
+      <_CwDir>$([System.IO.Path]::GetDirectoryName('$(CodeWalkerCorePath)'))</_CwDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_CwData Include="$(_CwDir)\ShadersGen9Conversion.xml" Condition="Exists('$(_CwDir)\ShadersGen9Conversion.xml')" />
+      <_CwData Include="$(_CwDir)\strings.txt" Condition="Exists('$(_CwDir)\strings.txt')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_CwData)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

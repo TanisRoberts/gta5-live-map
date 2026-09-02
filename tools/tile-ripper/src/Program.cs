@@ -43,11 +43,21 @@ namespace GtaLiveMap.TileRipper
         {
             string game = Arg(args, "--game", null);
             string outDir = Arg(args, "--out", "map-out");
+            string source = Arg(args, "--source", "vector");
             bool keepTiles = HasFlag(args, "--keep-tiles");
+
+            int width;
+            if (!int.TryParse(Arg(args, "--width", "8192"), out width)) width = 8192;
+            width = Math.Max(1024, Math.Min(16384, width));
 
             if (string.IsNullOrEmpty(game))
             {
-                Console.Error.WriteLine("usage: TileRipper --game <GTA V folder> [--out <dir>] [--keep-tiles]");
+                Console.Error.WriteLine("usage: TileRipper --game <GTA V folder> [--out <dir>]");
+                Console.Error.WriteLine("                 [--source vector|raster] [--width N] [--keep-tiles]");
+                Console.Error.WriteLine();
+                Console.Error.WriteLine("  --source  vector (default) renders the minimap geometry, which has no");
+                Console.Error.WriteLine("            resolution limit. raster uses the low-res minimap textures.");
+                Console.Error.WriteLine("  --width   output width in pixels, 1024-16384. Default 8192.");
                 return 2;
             }
 
@@ -74,24 +84,58 @@ namespace GtaLiveMap.TileRipper
                 _mgr.Init(game, gen9, delegate { }, delegate { }, false, false);
                 Console.WriteLine("  " + _mgr.AllRpfs.Count + " archives");
 
-                string root = FindRoot();
-                if (root == null)
+                Projection proj = ReadProjection();
+                string composite = Path.Combine(outDir, "gtav-map.png");
+                Size size = Size.Empty;
+
+                // Prefer the vector geometry: the raster tiles cap the road layer
+                // at 1024x1536 for the whole map, which is about three pixels per
+                // street. The geometry has no such ceiling.
+                if (!string.Equals(source, "raster", StringComparison.OrdinalIgnoreCase) && proj != null)
                 {
-                    Console.Error.WriteLine("Could not find the minimap tiles in this installation.");
-                    return 1;
+                    var vector = new VectorRenderer(_mgr, proj.StartX, proj.StartY, proj.WorldW, proj.WorldH);
+                    if (vector.Available())
+                    {
+                        int height = (int)Math.Round(width * proj.WorldH / proj.WorldW);
+                        Console.WriteLine("Rendering from vector geometry at " + width + " x " + height + " ...");
+
+                        byte[] buf = vector.Render(width, height, Console.WriteLine);
+                        if (buf != null)
+                        {
+                            SaveBuffer(buf, width, height, composite);
+                            size = new Size(width, height);
+                        }
+                        else
+                        {
+                            Console.WriteLine("  no geometry could be read; falling back to the raster tiles.");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("No minimap geometry in this installation; using the raster tiles.");
+                    }
                 }
 
-                Console.WriteLine("Tiles found under: " + root);
-                Console.WriteLine();
+                if (size == Size.Empty)
+                {
+                    string root = FindRoot();
+                    if (root == null)
+                    {
+                        Console.Error.WriteLine("Could not find the minimap tiles in this installation.");
+                        return 1;
+                    }
 
-                Bitmap[] sea = LoadGrid(root, "minimap_sea_{0}_{1}.ytd", outDir, keepTiles);
-                Bitmap[] land = LoadGrid(root, "minimap_{0}_{1}.ytd", outDir, keepTiles);
+                    Console.WriteLine("Tiles found under: " + root);
+                    Console.WriteLine();
 
-                string composite = Path.Combine(outDir, "gtav-map.png");
-                Size size = Compose(land, sea, composite);
+                    Bitmap[] sea = LoadGrid(root, "minimap_sea_{0}_{1}.ytd", outDir, keepTiles);
+                    Bitmap[] land = LoadGrid(root, "minimap_{0}_{1}.ytd", outDir, keepTiles);
 
-                Dispose(land);
-                Dispose(sea);
+                    size = Compose(land, sea, composite);
+
+                    Dispose(land);
+                    Dispose(sea);
+                }
 
                 Console.WriteLine();
                 Console.WriteLine("Map written to:");
@@ -112,7 +156,7 @@ namespace GtaLiveMap.TileRipper
 
                 if (!string.IsNullOrEmpty(deploy))
                 {
-                    Deploy(deploy, composite, size, gen9, ReadProjection());
+                    Deploy(deploy, composite, size, gen9, proj);
                 }
                 else
                 {
@@ -412,6 +456,18 @@ namespace GtaLiveMap.TileRipper
         private static string N(double v)
         {
             return v.ToString("0.#########", CultureInfo.InvariantCulture);
+        }
+
+        private static void SaveBuffer(byte[] buf, int width, int height, string path)
+        {
+            using (var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb))
+            {
+                BitmapData bits = bmp.LockBits(new Rectangle(0, 0, width, height),
+                                               ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                Marshal.Copy(buf, 0, bits.Scan0, buf.Length);
+                bmp.UnlockBits(bits);
+                bmp.Save(path, ImageFormat.Png);
+            }
         }
 
         private static int LargestCell(Bitmap[] grid)

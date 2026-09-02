@@ -61,6 +61,12 @@
 
   <!-- Top right: settings and avatar -->
   <div class="corner top-right">
+    <!-- In-game clock. The icon follows the game's own day/night cycle, whose
+         hours come from its timecycle keyframes -- see DAY_START in app.js. -->
+    <div class="clock" id="clock" hidden>
+      <svg id="clockIcon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sun"/></svg>
+      <span id="clockTime">--:--</span>
+    </div>
     <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings" aria-expanded="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-cog"/></svg>
     </button>
@@ -281,6 +287,8 @@
     <g id="i-lights"><path d="M3 5h4.5a7 7 0 0 1 0 14H3Z"/><path d="M14.5 8h5m-5 4h6m-6 4h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
     <g id="i-death"><path d="M12 2C7.6 2 4 5.5 4 9.9c0 2.4 1.1 4.5 2.8 5.9v2.3c0 .6.5 1.1 1.1 1.1h1.3v1.6c0 .6.5 1.1 1.1 1.1h3.4c.6 0 1.1-.5 1.1-1.1v-1.6h1.3c.6 0 1.1-.5 1.1-1.1v-2.3c1.7-1.4 2.8-3.5 2.8-5.9C20 5.5 16.4 2 12 2ZM9 11.4a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8Zm6 0a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8Z"/></g>
     <g id="i-arrest"><path d="M7 3a4 4 0 0 0-4 4 4 4 0 0 0 2.6 3.7A5 5 0 0 0 3 15a5 5 0 0 0 10 0 5 5 0 0 0-.6-2.4h-.8A5 5 0 0 0 11 12.6 4 4 0 0 0 11 3H7Zm0 2h4a2 2 0 0 1 0 4H7a2 2 0 0 1 0-4Zm1 7a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/><path d="M17 3a4 4 0 0 1 1.4 7.7A5 5 0 0 1 21 15a5 5 0 0 1-6.6 4.7 6.4 6.4 0 0 0 1.4-2.1A3 3 0 1 0 16 12h-.6a6.4 6.4 0 0 0-1.6-1.3A4 4 0 0 1 17 3Z"/></g>
+    <g id="i-sun"><circle cx="12" cy="12" r="5"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M19.8 4.2l-2.1 2.1M6.3 17.7l-2.1 2.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
+    <g id="i-moon"><path d="M20.7 14.6A9 9 0 0 1 9.4 3.3 9 9 0 1 0 20.7 14.6Z"/></g>
     <g id="i-tyre"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 3.4a6.6 6.6 0 0 1 6.6 6.6A6.6 6.6 0 1 1 12 5.4Z"/><path d="M12 7.6a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 0 0 0-8.8Zm0 2.2a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4Z"/></g>
   </defs>
 </svg>

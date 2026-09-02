@@ -85,6 +85,19 @@ namespace GtaLiveMap.TileRipper
                 _mgr.Init(game, gen9, delegate { }, delegate { }, false, false);
                 Console.WriteLine("  " + _mgr.AllRpfs.Count + " archives");
 
+                /*
+                 * Research mode: find and dump a file from the archives without
+                 * rendering anything.
+                 *
+                 * Added while working out when the game itself considers it
+                 * night, and kept because every question of that shape -- "what
+                 * does the game say, rather than what does the internet say" --
+                 * starts with locating the file that answers it.
+                 */
+                string find = Arg(args, "--find", null);
+                string dump = Arg(args, "--dump", null);
+                if (find != null || dump != null) return Probe(find, dump, outDir);
+
                 Projection proj = ReadProjection();
                 string composite = Path.Combine(outDir, "gtav-map.png");
                 Size size = Size.Empty;
@@ -188,6 +201,45 @@ namespace GtaLiveMap.TileRipper
 
             public double WorldW { get { return TilesX * TileW; } }
             public double WorldH { get { return TilesY * TileH; } }
+        }
+
+        /// <summary>
+        /// Lists archive paths containing a substring, and/or writes one file
+        /// out. Read-only, like everything else here.
+        /// </summary>
+        private static int Probe(string find, string dump, string outDir)
+        {
+            if (!string.IsNullOrEmpty(find))
+            {
+                int hits = 0;
+                foreach (RpfFile rpf in _mgr.AllRpfs)
+                {
+                    if (rpf.AllEntries == null) continue;
+                    foreach (RpfEntry e in rpf.AllEntries)
+                    {
+                        if (e.Path == null) continue;
+                        if (e.Path.IndexOf(find, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                        Console.WriteLine(e.Path);
+                        if (++hits >= 300) { Console.WriteLine("... truncated"); return 0; }
+                    }
+                }
+                Console.WriteLine(hits + " match(es)");
+            }
+
+            if (!string.IsNullOrEmpty(dump))
+            {
+                byte[] data = _mgr.GetFileData(dump);
+                if (data == null)
+                {
+                    Console.Error.WriteLine("Not found: " + dump);
+                    return 2;
+                }
+                Directory.CreateDirectory(outDir);
+                string outFile = Path.Combine(outDir, Path.GetFileName(dump));
+                File.WriteAllBytes(outFile, data);
+                Console.WriteLine("Wrote " + outFile + " (" + data.Length + " bytes)");
+            }
+            return 0;
         }
 
         /// <summary>

@@ -230,7 +230,7 @@ body.ui-hidden .panel { display: none; }
 /* ------------------------------------------------------------------ */
 /* Cards                                                               */
 /* ------------------------------------------------------------------ */
-.vehicle-card, .nav-card, .speedo, .signal {
+.vehicle-card, .nav-card, .speedo, .signal, .clock {
   background: var(--card-bg);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -654,3 +654,23 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
 .trail-event svg { width: 15px; height: 15px; fill: #0b0e12; }
 .trail-event.death  { background: var(--bad); }
 .trail-event.arrest { background: var(--accent); }
+
+/* ------------------------------------------------------------------ */
+/* In-game clock                                                       */
+/* ------------------------------------------------------------------ */
+.clock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.clock svg { width: 20px; height: 20px; fill: currentColor; }
+/* Day, night, and the two transition hours either side. */
+.clock.day   svg { color: #ffd23f; }
+.clock.night svg { color: #9fc4ff; }
+.clock.dawn  svg,
+.clock.dusk  svg { color: #ff9a4d; }

@@ -70,6 +70,26 @@ const ENGINE_HURT = 700;   // below this it is visibly smoking
 const ENGINE_DEAD = 0;     // at or below, it will not run
 
 /*
+ * The game's own day/night boundaries, not guessed ones.
+ *
+ * GTA V's timecycle files (common/data/timecycle/w_*.xml, read out of the
+ * archives with the tile ripper's --dump) hold 13 keyframes per property, on
+ * the engine's fixed hours 0, 5, 6, 7, 10, 12, 16, 17, 19, 20,
+ * 21, 22, 24. Keyframe 5 is noon, which is where light_dir_mult peaks at 64 --
+ * that is the check that the mapping is right rather than assumed.
+ *
+ * In w_extrasunny.xml the sun term light_dir_mult reads:
+ *   0.2  0.0  5.0  10.0  32.0  64.0  52.0  40.0  22.0  12.0  5.0  0.0  0.2
+ * It is exactly zero at 05:00 and 22:00 and non-zero between, so the sun
+ * contributes nothing outside 06:00-21:00. The hours either side are the
+ * interpolated dawn and dusk.
+ */
+const DAWN_START  = 5;
+const DAY_START   = 6;
+const DUSK_START  = 21;
+const NIGHT_START = 22;
+
+/*
  * Trail styling.
  *
  * The old 2.5px translucent blue was picked against the near-black raster map.
@@ -1106,6 +1126,33 @@ function modeZoom(inVehicle) {
   return Number.isFinite(z) ? z : (inVehicle ? ZOOM_VEHICLE : ZOOM_FOOT);
 }
 
+/**
+ * The in-game clock, and which part of the day it belongs to. Hours come from
+ * the game's own timecycle keyframes — see DAY_START above.
+ */
+function updateClock(s) {
+  const el = $('#clock');
+  const h = s.gameHour, m = s.gameMinute;
+  if (!Number.isFinite(h) || !Number.isFinite(m)) { el.hidden = true; return; }
+  el.hidden = false;
+
+  $('#clockTime').textContent =
+    String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+
+  const phase = h >= NIGHT_START || h < DAWN_START ? 'night'
+              : h < DAY_START                      ? 'dawn'
+              : h < DUSK_START                     ? 'day'
+              : 'dusk';
+  el.classList.remove('day', 'night', 'dawn', 'dusk');
+  el.classList.add(phase);
+
+  // Moon only in true night; dawn and dusk keep the sun, tinted, because the
+  // sun is still contributing light in those hours.
+  $('#clockIcon').firstElementChild.setAttribute(
+    'href', phase === 'night' ? '#i-moon' : '#i-sun');
+  el.title = 'In-game time — ' + phase;
+}
+
 /*
  * Light one tell-tale. The class carries the colour (see .status-row in the
  * stylesheet); the label carries the same state as text, since a colour change
@@ -1122,6 +1169,10 @@ function updateHud() {
   // rAF is paused while the tab is hidden, so advance the state here too.
   const s = sampleCurrent();
   if (!s) return;
+
+  // The clock applies on foot as much as in a vehicle, so it sits above the
+  // guard below rather than inside it.
+  updateClock(s);
 
   /*
    * Speed, revs and the tell-tales are all vehicle instruments, so the whole

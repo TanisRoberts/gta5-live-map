@@ -310,8 +310,9 @@ body.ui-hidden .panel { display: none; }
   color: var(--muted);
 }
 .nav-card .street-sub:empty { display: none; }
-/* Stale feed: dim rather than lie about where you are. */
-.nav-card.stale { opacity: .4; }
+/* Dimmed while the feed is lost: the values are still on screen, but they are
+   no longer claims about now. Excludes a paused game — see updateFeedStatus. */
+.nav-card.stale, .vehicle-card.stale, .speedo.stale { opacity: .4; }
 
 /* Speedometer — beside the controls, not in them */
 .speedo {
@@ -398,6 +399,7 @@ body.ui-hidden .panel { display: none; }
   margin-top: 8px;
 }
 .status-row svg {
+  fill: currentColor;   /* without this the paths fill black and vanish on the card */
   width: 18px; height: 18px;
   color: var(--muted);
   opacity: .35;

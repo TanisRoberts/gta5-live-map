@@ -543,6 +543,11 @@ function mockTick() {
     engineRunning:      !!veh,
     lightsOn:           !!veh && Math.floor(t / 7000) % 3 > 0,
     highBeams:          !!veh && Math.floor(t / 7000) % 3 === 2,
+    // Cycles into the broken state so the red lights tell-tale can be seen
+    // without shooting a car's headlights out.
+    headlightsGone:     !!veh && Math.floor(t / 11000) % 4 === 3,
+    prevOwned:          veh ? !veh.stolen : false,
+    needsHotwire:       veh ? veh.stolen : false,
     streetName:     place.street,
     crossingStreet: place.crossing,
     zoneName:       place.zone,
@@ -605,7 +610,21 @@ function updateFeedStatus() {
     : fresh  ? 'Live'
     : paused ? 'Paused'
     : 'No signal';
-  $('#navCard').classList.toggle('stale', !fresh);
+  /*
+   * Dim every data card on signal loss, and only on signal loss.
+   *
+   * The street name is a claim about right now, and so are the speed, the
+   * revs and the vehicle — a confident-looking card over a dead feed is a
+   * lie. Previously only the nav card dimmed, which read as a rendering
+   * glitch rather than a signal, because nothing around it agreed.
+   *
+   * A paused game is excluded on purpose: that data is stopped, not wrong,
+   * and the amber Paused light already says so.
+   */
+  const lost = !fresh && !paused;
+  $('#navCard').classList.toggle('stale', lost);
+  $('#vehicleCard').classList.toggle('stale', lost);
+  $('#speedo').classList.toggle('stale', lost);
 
   // Detail, for the Advanced section.
   const dot = $('#feedDot'), txt = $('#feedStatus');
@@ -1002,8 +1021,20 @@ function updateHud() {
     $('#statusRow').hidden = false;
     setTellTale($('#stEngine'), s.engineRunning ? 'on' : '',
                 s.engineRunning ? 'Engine running' : 'Engine off');
-    setTellTale($('#stLights'), s.highBeams ? 'beam' : s.lightsOn ? 'on' : '',
-                s.highBeams ? 'Full beam' : s.lightsOn ? 'Lights on' : 'Lights off');
+    /*
+     * Lights, in four states. Broken outranks everything: no amount of
+     * switching them on matters once both units are gone, and the same
+     * answer covers a vehicle that never had headlights to begin with.
+     */
+    const lightState = s.headlightsGone ? 'warn'
+                     : s.highBeams      ? 'beam'
+                     : s.lightsOn       ? 'on'
+                     : '';
+    setTellTale($('#stLights'), lightState,
+                s.headlightsGone ? 'No working headlights'
+                : s.highBeams    ? 'Full beam'
+                : s.lightsOn     ? 'Lights on'
+                : 'Lights off');
     setTellTale($('#stStolen'), s.isStolen ? 'warn' : '',
                 s.isStolen ? 'Stolen vehicle' : 'Not flagged stolen');
 

@@ -263,6 +263,9 @@ namespace GtaLiveMap
             bool engineRunning = false;
             bool lightsOn = false;
             bool highBeams = false;
+            bool headlightsGone = false;
+            bool prevOwned = false;
+            bool needsHotwire = false;
 
             if (vehicle != null)
             {
@@ -294,6 +297,20 @@ namespace GtaLiveMap
                 engineRunning = vehicle.IsEngineRunning;
                 lightsOn = vehicle.AreLightsOn;
                 highBeams = vehicle.AreHighBeamsOn;
+
+                // Red lights tell-tale. The native covers both the "shot out"
+                // and the "never had any" cases in one answer, which is what
+                // we want: a bicycle with no headlights is as unlit as a car
+                // with two broken ones.
+                headlightsGone = Function.Call<bool>(
+                    Hash.GET_BOTH_VEHICLE_HEADLIGHTS_DAMAGED, vehicle);
+
+                // IS_VEHICLE_STOLEN is not "you stole this" -- it is an
+                // internal flag that plenty of jacked traffic never carries.
+                // Sent alongside so we can see which of the three actually
+                // tracks a nicked car before deciding what the icon means.
+                prevOwned = vehicle.PreviouslyOwnedByPlayer;
+                needsHotwire = vehicle.NeedsToBeHotwired;
 
                 VehicleModCollection mods = vehicle.Mods;
                 if (mods != null)
@@ -347,6 +364,9 @@ namespace GtaLiveMap
             sb.Append(",\"engineRunning\":").Append(Json.Bool(engineRunning));
             sb.Append(",\"lightsOn\":").Append(Json.Bool(lightsOn));
             sb.Append(",\"highBeams\":").Append(Json.Bool(highBeams));
+            sb.Append(",\"headlightsGone\":").Append(Json.Bool(headlightsGone));
+            sb.Append(",\"prevOwned\":").Append(Json.Bool(prevOwned));
+            sb.Append(",\"needsHotwire\":").Append(Json.Bool(needsHotwire));
             sb.Append(",\"streetName\":").Append(Json.String(_streetName));
             sb.Append(",\"crossingStreet\":").Append(Json.String(_crossingStreet));
             sb.Append(",\"zoneName\":").Append(Json.String(_zoneName));

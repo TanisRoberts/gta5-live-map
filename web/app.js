@@ -35,6 +35,61 @@ const RESTART_JUMP_MS = 1000; // a timestamp this far backwards = plugin restart
 const STALE_MS       = 1500;  // no sample this long => feed considered dead
 const FETCH_TIMEOUT  = 2000;
 const TRAIL_MIN_MOVE = 3;     // game units between trail points
+
+// Zoom to settle on when following the player and nothing better is remembered.
+const DEFAULT_FOLLOW_ZOOM = -1;
+
+/*
+ * Trail styling.
+ *
+ * The old 2.5px translucent blue was picked against the near-black raster map.
+ * The vector map is far lighter — pale roads, tan coastline — and that blue
+ * nearly vanished on it.
+ *
+ * Each segment is drawn twice: a dark casing underneath, then the colour on
+ * top. That is the standard cartographic trick for a line that has to stay
+ * legible over both pale roads and near-black terrain, and it costs one extra
+ * polyline per segment.
+ *
+ * Weight is deliberately well under the player arrow (~20px of visible width
+ * at a 30px icon). The trail should read as bold, not compete with the marker.
+ */
+const TRAIL_WEIGHT = 7;
+const TRAIL_CASING_EXTRA = 4;
+
+/*
+ * SHVDN reports 23 vehicle classes; that is far more detail than is useful at a
+ * glance, so they collapse to a handful of categories. Done here rather than in
+ * the plugin so the grouping can be retuned without a rebuild and a reload.
+ *
+ * Hues are spread widely and kept saturated, because the map itself is almost
+ * entirely desaturated greys and tans — anything muted disappears into it.
+ */
+const TRAIL_COLOURS = {
+  foot:  '#ffd23f',   // amber
+  car:   '#00c8ff',   // cyan
+  bike:  '#ff4fa3',   // magenta
+  boat:  '#00e58a',   // spring green
+  air:   '#b57bff',   // violet
+  other: '#ff7a45'    // orange
+};
+
+const TRAIL_LABELS = {
+  foot: 'On foot', car: 'Car', bike: 'Bike',
+  boat: 'Boat', air: 'Aircraft', other: 'Other'
+};
+
+/** Exact VehicleClass names, read off the assembly rather than guessed. */
+const VEHICLE_CATEGORY = {
+  Compacts: 'car', Sedans: 'car', SUVs: 'car', Coupes: 'car', Muscle: 'car',
+  SportsClassics: 'car', Sports: 'car', Super: 'car', OffRoad: 'car',
+  Industrial: 'car', Utility: 'car', Vans: 'car', Service: 'car',
+  Emergency: 'car', Military: 'car', Commercial: 'car', OpenWheel: 'car',
+  Motorcycles: 'bike', Cycles: 'bike',
+  Boats: 'boat',
+  Helicopters: 'air', Planes: 'air',
+  Trains: 'other'
+};
 const LS_KEY         = 'gta5livemap.settings';
 const DB_NAME        = 'gta5-live-map';
 const DB_STORE       = 'assets';
@@ -78,6 +133,7 @@ const defaults = {
   mock:        false,
   server:      "",
   panelOpen:   null,     // null = decide from viewport width on first run
+  zoom:        null,     // remembered so a reload does not throw away your view
   transformSource: null  // "auto" (from the setup tool) or "manual"
 };
 
@@ -269,18 +325,20 @@ function sampleAt(tLocal) {
   const span = q.lt - p.lt;
   const u = span > 0 ? (tLocal - p.lt) / span : 0;
 
-  return {
+  // Start from the newer sample so every field carries through, then override
+  // only the ones that are meaningful to interpolate.
+  //
+  // This used to enumerate fields by hand, which meant each new field added to
+  // the plugin silently vanished here until someone remembered to list it —
+  // vehicleClass did exactly that, so the trail fell back to "car" for
+  // everything. Spreading is the version that cannot rot.
+  return Object.assign({}, q, {
     x: lerp(p.x, q.x, u),
     y: lerp(p.y, q.y, u),
     z: lerp(p.z, q.z, u),
     heading: lerpAngle(p.heading, q.heading, u),
-    speed:   lerp(p.speed, q.speed, u),
-    inVehicle:          q.inVehicle,
-    vehicleDisplayName: q.vehicleDisplayName,
-    wantedLevel:        q.wantedLevel,
-    gameHour:           q.gameHour,
-    gameMinute:         q.gameMinute
-  };
+    speed:   lerp(p.speed, q.speed, u)
+  });
 }
 
 // --------------------------------------------------------------------------
@@ -331,7 +389,30 @@ async function pollOnce() {
  * Heading comes from the numeric velocity, so it is always consistent with the
  * path actually travelled.
  */
-const MOCK_VEHICLES = ['Sultan', 'Buffalo STX', null, 'Sanchez', 'Bison', null];
+/*
+ * The mock exists so the whole UI can be exercised with the game shut, which
+ * only works if it produces the same SHAPE the plugin does. It had drifted —
+ * sending no vehicleClass at all, so every mock vehicle fell back to "car" and
+ * the trail could never change colour. These entries deliberately cover every
+ * trail category, and carry the colour/plate/street fields the cards will need.
+ */
+const MOCK_VEHICLES = [
+  { name: 'Sultan',      cls: 'Sports',      colour: 'MetallicBlue',   plate: '46EEK572' },
+  { name: 'Buffalo STX', cls: 'Sedans',      colour: 'MetallicBlack',  plate: '11ABC222' },
+  null,                                                                 // on foot
+  { name: 'Sanchez',     cls: 'Motorcycles', colour: 'MatteRed',       plate: '99XYZ001' },
+  { name: 'Dinghy',      cls: 'Boats',       colour: 'MetallicWhite',  plate: null },
+  { name: 'Buzzard',     cls: 'Helicopters', colour: 'MetallicGreen',  plate: null },
+  null
+];
+
+const MOCK_STREETS = [
+  { street: 'Vinewood Blvd',   crossing: 'Mad Wayne Thunder Dr', zone: 'Vinewood' },
+  { street: 'Del Perro Fwy',   crossing: null,                   zone: 'Del Perro' },
+  { street: "Adam's Apple Blvd", crossing: 'Power St',           zone: 'Pillbox Hill' },
+  { street: 'Great Ocean Hwy', crossing: null,                   zone: 'Chumash' }
+];
+
 const MOCK_PHASE_MS = 30000;
 
 let mockTimer   = null;
@@ -366,6 +447,8 @@ function mockTick() {
 
   const gameMinutes = Math.floor(t / 2000) % 1440;           // 30x real time
 
+  const place = MOCK_STREETS[Math.floor(t / 20000) % MOCK_STREETS.length];
+
   pushSample({
     x: p.x,
     y: p.y,
@@ -373,7 +456,13 @@ function mockTick() {
     heading: mockHeading,
     speed,
     inVehicle: !!veh,
-    vehicleDisplayName: veh,
+    vehicleDisplayName: veh ? veh.name : null,
+    vehicleClass:       veh ? veh.cls : null,
+    vehicleColor:       veh ? veh.colour : null,
+    licensePlate:       veh ? veh.plate : null,
+    streetName:     place.street,
+    crossingStreet: place.crossing,
+    zoneName:       place.zone,
     wantedLevel: Math.floor(t / 25000) % 6,
     gameHour:   Math.floor(gameMinutes / 60),
     gameMinute: gameMinutes % 60,
@@ -441,8 +530,8 @@ function topLeftCrs(height) {
   });
 }
 let marker = null, markerSvg = null;
-let trailLine = null;
-let trailPts = [];          // game-space points
+let trailLayer = null;
+let trailPts = [];          // game-space points, each tagged with its category
 let calLayer = null;
 
 function initMap(tileHeight) {
@@ -459,12 +548,24 @@ function initMap(tileHeight) {
   map.setView([0, 0], 0);
 
   calLayer  = L.layerGroup().addTo(map);
-  trailLine = L.polyline([], {
-    color: '#47c1ff', weight: 2.5, opacity: 0.65, interactive: false
-  }).addTo(map);
+  // A group rather than one polyline: the trail is drawn as a run of segments
+  // so it can change colour wherever the vehicle type changes.
+  trailLayer = L.layerGroup().addTo(map);
 
   // Panning by hand means you want manual control.
   map.on('dragstart', () => { if (settings.follow) setFollow(false); });
+
+  // Remember the zoom, so a reload puts you back where you were looking rather
+  // than throwing you out to the whole island.
+  map.on('zoomend', () => {
+    // Ignore the framing fitBounds that runs before the first position is
+    // known. It fires zoomend too, and saving it would overwrite the very
+    // preference we are about to restore.
+    if (awaitingFirstFix) return;
+
+    const z = map.getZoom();
+    if (Number.isFinite(z) && z !== settings.zoom) { settings.zoom = z; save(); }
+  });
   map.on('click', onMapClick);
 
   // Window resize, phone rotation, panel show/hide — Leaflet caches the
@@ -522,6 +623,7 @@ function setMapTiles(base, manifest) {
   map.setMinZoom(-t.maxZoom);
   map.setMaxZoom(2);
   map.setMaxBounds(imageBounds.pad(0.6));
+  awaitingFirstFix = true;
   map.fitBounds(imageBounds);
 
   $('#imgInfo').textContent =
@@ -554,6 +656,7 @@ async function setMapImage(blob, name) {
 
   map.setMaxBounds(imageBounds.pad(0.6));
   map.setMinZoom(map.getBoundsZoom(imageBounds) - 3);
+  awaitingFirstFix = true;
   map.fitBounds(imageBounds);
 
   $('#imgInfo').textContent = `${name || 'image'} — ${w} × ${h} px`;
@@ -596,25 +699,75 @@ function ensureMarker() {
   }).addTo(map);
 }
 
-function redrawTrail() {
-  if (!settings.transform) { trailLine.setLatLngs([]); return; }
-  trailLine.setLatLngs(trailPts.map(p => gameToLatLng(p.x, p.y)));
+/** Which trail colour a sample belongs to. */
+function trailCategory(s) {
+  if (!s || !s.inVehicle) return 'foot';
+  return VEHICLE_CATEGORY[s.vehicleClass] || 'car';
 }
 
-function pushTrail(x, y) {
+/**
+ * Rebuilds the trail as one polyline pair per run of consecutive points that
+ * share a category. Each run reaches one point into the next so the colours
+ * butt up against each other instead of leaving a gap at every change.
+ */
+function redrawTrail() {
+  trailLayer.clearLayers();
+  if (!settings.transform || trailPts.length < 2) return;
+
+  let start = 0;
+  for (let i = 1; i <= trailPts.length; i++) {
+    const ended = i === trailPts.length;
+    if (!ended && trailPts[i].cat === trailPts[start].cat) continue;
+
+    // Overlap by one so consecutive runs share a vertex.
+    const run = trailPts.slice(start, ended ? i : i + 1);
+    if (run.length >= 2) {
+      const pts = run.map(p => gameToLatLng(p.x, p.y));
+      const colour = TRAIL_COLOURS[trailPts[start].cat] || TRAIL_COLOURS.other;
+
+      // Dark casing first, so the colour stays readable over pale roads and
+      // near-black terrain alike.
+      L.polyline(pts, {
+        color: '#0b0e12', weight: TRAIL_WEIGHT + TRAIL_CASING_EXTRA,
+        opacity: 0.55, lineCap: 'round', lineJoin: 'round', interactive: false
+      }).addTo(trailLayer);
+
+      L.polyline(pts, {
+        color: colour, weight: TRAIL_WEIGHT,
+        opacity: 0.95, lineCap: 'round', lineJoin: 'round', interactive: false
+      }).addTo(trailLayer);
+    }
+
+    start = i;
+  }
+}
+
+function pushTrail(x, y, cat) {
   const n = settings.trailLength;
   if (n <= 0) {
-    if (trailPts.length) { trailPts = []; trailLine.setLatLngs([]); }
+    if (trailPts.length) { trailPts = []; trailLayer.clearLayers(); }
     return;
   }
+
   const last = trailPts[trailPts.length - 1];
-  if (last && Math.hypot(x - last.x, y - last.y) < TRAIL_MIN_MOVE) return;
-  trailPts.push({ x, y });
+  // Always record a point when the category changes, however small the move,
+  // or the colour boundary lands wherever the next 3-unit step happens to fall.
+  if (last && last.cat === cat && Math.hypot(x - last.x, y - last.y) < TRAIL_MIN_MOVE) return;
+
+  trailPts.push({ x, y, cat });
   while (trailPts.length > n) trailPts.shift();
   redrawTrail();
 }
 
 let current = null;   // most recent interpolated state, for the HUD
+
+/*
+ * Set whenever the base layer is (re)created. Fitting the whole island is the
+ * right thing to show before any position is known, but it is the wrong zoom to
+ * then sit at — follow mode preserves the current zoom, so without this a
+ * reload silently dropped you from street level to the whole map.
+ */
+let awaitingFirstFix = true;
 
 /**
  * Advances the interpolated state.
@@ -628,7 +781,14 @@ let current = null;   // most recent interpolated state, for the HUD
  */
 function sampleCurrent() {
   const s = sampleAt(performance.now() - renderDelayMs());
-  if (s) current = s;
+  if (!s) return null;
+
+  current = s;
+
+  // Record the trail here rather than in the render loop. The trail is a
+  // record of where you went, not a drawing artefact — tying it to
+  // requestAnimationFrame meant a hidden tab silently lost the whole route,
+  // which is the opposite of what a breadcrumb trail is for.
   return s;
 }
 
@@ -646,9 +806,17 @@ function frame() {
   if (!markerSvg && marker.getElement()) markerSvg = marker.getElement().querySelector('svg');
   if (markerSvg) markerSvg.style.transform = `rotate(${headingToCssDeg(s.heading).toFixed(1)}deg)`;
 
-  pushTrail(s.x, s.y);
+  pushTrail(s.x, s.y, trailCategory(s));
 
-  if (settings.follow) map.setView(ll, map.getZoom(), { animate: false });
+  if (settings.follow) {
+    if (awaitingFirstFix) {
+      awaitingFirstFix = false;
+      const z = Number.isFinite(settings.zoom) ? settings.zoom : DEFAULT_FOLLOW_ZOOM;
+      map.setView(ll, z, { animate: false });
+    } else {
+      map.setView(ll, map.getZoom(), { animate: false });
+    }
+  }
 }
 
 function updateHud() {
@@ -854,6 +1022,17 @@ function wireUi() {
     save();
     while (trailPts.length > settings.trailLength) trailPts.shift();
     redrawTrail();
+  });
+
+  // Legend, built from TRAIL_COLOURS so there is one source of truth.
+  const legend = $('#trailLegend');
+  Object.keys(TRAIL_COLOURS).forEach(key => {
+    const item = document.createElement('span');
+    const swatch = document.createElement('i');
+    swatch.style.background = TRAIL_COLOURS[key];
+    item.appendChild(swatch);
+    item.appendChild(document.createTextNode(TRAIL_LABELS[key] || key));
+    legend.appendChild(item);
   });
 
   $('#trailClear').addEventListener('click', () => {

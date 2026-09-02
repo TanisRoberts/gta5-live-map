@@ -706,10 +706,16 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
  * the CSS state text is not drawn — and the number sits in the blank lower
  * area the artwork leaves for it, at 256x128 like every plate texture.
  */
+/*
+ * Sized so an eight-character registration -- which is what the game issues --
+ * leaves roughly one character clear at each end, the way a real plate is set
+ * out. The artwork frame is a single pixel of its 256, so that margin is
+ * measured against the full width rather than any inner field.
+ */
 .plate.has-art {
   display: block;
   position: relative;
-  width: 158px;
+  width: 136px;
   aspect-ratio: 256 / 128;
   padding: 0;
   border: 0;

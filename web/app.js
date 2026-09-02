@@ -616,11 +616,26 @@ function pushTrail(x, y) {
 
 let current = null;   // most recent interpolated state, for the HUD
 
+/**
+ * Advances the interpolated state.
+ *
+ * Deliberately NOT tied to the animation frame. Browsers pause
+ * requestAnimationFrame outright in a hidden tab — not throttled like
+ * setInterval, stopped — which happens whenever the game covers the browser.
+ * With everything hanging off rAF the status line read "Live" while the HUD
+ * stayed blank and no marker ever appeared, which is worse than saying nothing.
+ * The HUD timer calls this too, so the readout is correct the moment you look.
+ */
+function sampleCurrent() {
+  const s = sampleAt(performance.now() - renderDelayMs());
+  if (s) current = s;
+  return s;
+}
+
 function frame() {
   requestAnimationFrame(frame);
-  const s = sampleAt(performance.now() - renderDelayMs());
+  const s = sampleCurrent();
   if (!s) return;
-  current = s;
 
   const ll = gameToLatLng(s.x, s.y);
   if (!ll) return;
@@ -638,7 +653,8 @@ function frame() {
 
 function updateHud() {
   updateFeedStatus();
-  const s = current;
+  // rAF is paused while the tab is hidden, so advance the state here too.
+  const s = sampleCurrent();
   if (!s) return;
   $('#hudSpeed').textContent   = Math.round(s.speed * 2.23694);      // m/s -> mph
   $('#hudVehicle').textContent = s.inVehicle ? (s.vehicleDisplayName || 'Vehicle') : 'On foot';

@@ -129,7 +129,7 @@ client-side only. Independent of the plugin, so it can be done any time.
 straight line. Needs road geometry the client does not have — see item 6. This is
 much the largest item here and should be split out once 3a and 3b land.
 
-## 4. Colour-code the trail by vehicle type
+## 4. Colour-code the trail by vehicle type — DONE
 
 Show which parts of a journey were driven, ridden, sailed or walked, by colouring
 each trail segment accordingly (boat, car, bike, on foot, aircraft, …).
@@ -145,7 +145,9 @@ of segments split wherever the class changes. Worth keeping the existing point
 budget in mind — the trail is capped at 2000 points and redrawn whenever a point
 is added.
 
-Needs a legend, or the colours mean nothing.
+Shipped with a legend, a dark casing for contrast against the light vector
+map, and coarse categories (car / bike / boat / aircraft / on foot) mapped
+client-side from vehicleClass.
 
 ## 5. Tiled base map, and switchable layers
 

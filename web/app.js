@@ -689,6 +689,18 @@ function mockTick() {
     engineHealth:       veh ? [1000, 1000, 450, 0][Math.floor(t / 9000) % 4] : 0,
     onFire:             false,
     tyresBurst:         veh ? Math.min(veh.wheels, Math.floor(t / 13000) % 3) : 0,
+    // Damage cycles through intact, knocked about and wrecked so the
+    // schematic can be exercised with the game shut.
+    bodyHealth:   veh ? [1000, 1000, 720, 300][Math.floor(t / 9000) % 4] : 0,
+    tankHealth:   veh ? [1000, 1000, 1000, 250][Math.floor(t / 9000) % 4] : 0,
+    bumperF:      !!veh && Math.floor(t / 9000) % 4 === 3,
+    bumperR:      false,
+    wheelStates:  veh && veh.wheels >= 4
+                    ? ['lf:0,rf:0,lr:0,rr:0', 'lf:1,rf:0,lr:0,rr:0', 'lf:1,rf:0,lr:1,rr:0'][Math.floor(t / 13000) % 3]
+                    : null,
+    doorStates:   veh && veh.wheels >= 4
+                    ? ['fl:0,fr:0,bl:0,br:0,hood:0,boot:0', 'fl:1,fr:0,bl:0,br:0,hood:0,boot:0', 'fl:2,fr:0,bl:0,br:0,hood:1,boot:0'][Math.floor(t / 11000) % 3]
+                    : null,
     // Engine and lights cycle so the tell-tales can be seen changing with the
     // game shut, rather than sitting in one state forever.
     engineRunning:      !!veh,
@@ -1276,6 +1288,7 @@ function updateHud() {
   // guard below rather than inside it.
   updateClock(s);
   updateAvatar(s);
+  updateDamage(s);
 
   /*
    * Speed, revs and the tell-tales are all vehicle instruments, so the whole
@@ -1844,6 +1857,114 @@ async function fetchPortraits() {
   } catch (e) {
     return null;
   }
+}
+
+/*
+ * Damage schematic.
+ *
+ * Health values run 0..1000. These thresholds live here rather than in the
+ * plugin so they can be retuned without a rebuild and a reload, the same
+ * reasoning as the engine tell-tale.
+ */
+const DMG_WARN = 900;   // below this, visibly knocked about
+const DMG_BAD  = 400;   // below this, wrecked
+
+/* Cars only for now. A bike has no doors and two wheels, a boat has neither,
+   and the silhouette would be a lie for both. */
+const DAMAGE_CLASSES = {
+  Compacts: 1, Sedans: 1, SUVs: 1, Coupes: 1, Muscle: 1, SportsClassics: 1,
+  Sports: 1, Super: 1, Vans: 1, OffRoad: 1, Emergency: 1, Service: 1,
+  Industrial: 1, Utility: 1, Commercial: 1, Military: 1
+};
+
+/** Parses "lf:0,rf:1" into { lf: 0, rf: 1 }. */
+function parseStates(s) {
+  const out = {};
+  if (!s) return out;
+  s.split(',').forEach(pair => {
+    const bits = pair.split(':');
+    if (bits.length === 2) out[bits[0]] = Number(bits[1]);
+  });
+  return out;
+}
+
+function healthClass(v) {
+  if (!Number.isFinite(v)) return '';
+  if (v <= DMG_BAD) return 'bad';
+  if (v < DMG_WARN) return 'warn';
+  return '';
+}
+
+function setPart(id, cls, present) {
+  const el = $('#' + id);
+  if (!el) return;
+  el.classList.remove('warn', 'bad', 'absent');
+  if (present === false) { el.classList.add('absent'); return; }
+  if (cls) el.classList.add(cls);
+}
+
+function updateDamage(s) {
+  const el = $('#damage');
+  const isCar = s.inVehicle && DAMAGE_CLASSES[s.vehicleClass] === 1;
+  if (!isCar) {
+    // Clear as well as hide, or the next car briefly wears the last one's
+    // injuries before the first update lands.
+    el.hidden = true;
+    $('#damageCaption').textContent = '';
+    return;
+  }
+
+  const wheels = parseStates(s.wheelStates);
+  const doors = parseStates(s.doorStates);
+
+  const body = healthClass(s.bodyHealth);
+  const engine = s.onFire ? 'bad' : healthClass(s.engineHealth);
+  // A tank losing fuel is leaking, which the health alone does not say --
+  // see the fuel finding in DELIVERED.md.
+  const tank = healthClass(s.tankHealth);
+
+  setPart('dmgBody', body);
+  setPart('dmgEngine', engine);
+  setPart('dmgTank', tank);
+  setPart('dmgBumperF', s.bumperF ? 'bad' : '');
+  setPart('dmgBumperR', s.bumperR ? 'bad' : '');
+  setPart('dmgHeadL', s.headlightL ? 'bad' : '');
+  setPart('dmgHeadR', s.headlightR ? 'bad' : '');
+
+  const wheelIds = { lf: 'dmgWheelLf', rf: 'dmgWheelRf', lr: 'dmgWheelLr', rr: 'dmgWheelRr' };
+  Object.keys(wheelIds).forEach(pos => {
+    const has = pos in wheels;
+    setPart(wheelIds[pos], wheels[pos] ? 'bad' : '', has);
+  });
+
+  const doorIds = { fl: 'dmgDoorFl', fr: 'dmgDoorFr', bl: 'dmgDoorBl', br: 'dmgDoorBr',
+                    hood: 'dmgHood', boot: 'dmgBoot' };
+  Object.keys(doorIds).forEach(pos => {
+    const has = pos in doors;
+    const v = doors[pos];
+    setPart(doorIds[pos], v === 2 ? 'bad' : v === 1 ? 'warn' : '', has);
+  });
+
+  /*
+   * Only shown when something is actually wrong. A permanently present
+   * schematic showing an undamaged car stops being noticed, and this HUD is
+   * already busy at the distance it is read from.
+   */
+  const faults = [];
+  if (engine === 'bad') faults.push(s.onFire ? 'Engine on fire' : 'Engine destroyed');
+  else if (engine === 'warn') faults.push('Engine damaged');
+  const flats = Object.keys(wheels).filter(k => wheels[k]).length;
+  if (flats) faults.push(flats === 1 ? 'Tyre blown' : flats + ' tyres blown');
+  if (tank) faults.push(tank === 'bad' ? 'Fuel tank ruptured' : 'Fuel tank leaking');
+  const doorsOff = Object.keys(doors).filter(k => doors[k] === 2).length;
+  if (doorsOff) faults.push(doorsOff === 1 ? 'Door torn off' : doorsOff + ' doors torn off');
+  if (s.bumperF || s.bumperR) faults.push('Bumper off');
+  if (s.headlightL && s.headlightR) faults.push('Headlights out');
+  else if (s.headlightL || s.headlightR) faults.push('Headlight out');
+  if (body) faults.push(body === 'bad' ? 'Bodywork wrecked' : 'Bodywork damaged');
+
+  el.hidden = faults.length === 0;
+  $('#damageCaption').textContent = faults[0] || '';
 }
 
 /**

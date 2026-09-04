@@ -77,6 +77,38 @@
 
   <!-- Bottom left: vehicle -->
   <div class="corner bottom-left">
+    <!-- Damage schematic. Cars only, and only when something is actually
+         wrong — see updateDamage. No card behind it: it floats over the map.
+         Parts the vehicle does not have are never drawn. -->
+    <div class="damage" id="damage" hidden>
+      <div class="damage-caption" id="damageCaption"></div>
+      <svg viewBox="0 0 96 168" aria-hidden="true">
+        <!-- Shell -->
+        <rect id="dmgBody" class="d-outline" x="14" y="2" width="68" height="164" rx="18"/>
+        <!-- Bumpers -->
+        <rect id="dmgBumperF" class="d-part" x="20" y="1" width="56" height="6" rx="3"/>
+        <rect id="dmgBumperR" class="d-part" x="20" y="161" width="56" height="6" rx="3"/>
+        <!-- Headlights -->
+        <rect id="dmgHeadL" class="d-part" x="24" y="11" width="13" height="6" rx="2"/>
+        <rect id="dmgHeadR" class="d-part" x="59" y="11" width="13" height="6" rx="2"/>
+        <!-- Engine and hood -->
+        <rect id="dmgEngine" class="d-part" x="31" y="23" width="34" height="26" rx="4"/>
+        <rect id="dmgHood" class="d-part" x="30" y="53" width="36" height="8" rx="2"/>
+        <!-- Wheels -->
+        <rect id="dmgWheelLf" class="d-part" x="3" y="30" width="14" height="28" rx="4"/>
+        <rect id="dmgWheelRf" class="d-part" x="79" y="30" width="14" height="28" rx="4"/>
+        <rect id="dmgWheelLr" class="d-part" x="3" y="110" width="14" height="28" rx="4"/>
+        <rect id="dmgWheelRr" class="d-part" x="79" y="110" width="14" height="28" rx="4"/>
+        <!-- Doors -->
+        <rect id="dmgDoorFl" class="d-part" x="16" y="66" width="10" height="32" rx="2"/>
+        <rect id="dmgDoorFr" class="d-part" x="70" y="66" width="10" height="32" rx="2"/>
+        <rect id="dmgDoorBl" class="d-part" x="16" y="102" width="10" height="28" rx="2"/>
+        <rect id="dmgDoorBr" class="d-part" x="70" y="102" width="10" height="28" rx="2"/>
+        <!-- Boot and tank -->
+        <rect id="dmgBoot" class="d-part" x="30" y="120" width="36" height="8" rx="2"/>
+        <rect id="dmgTank" class="d-part" x="34" y="134" width="28" height="20" rx="3"/>
+      </svg>
+    </div>
     <div class="vehicle-card" id="vehicleCard" hidden>
       <span class="v-make" id="vehicleMake"></span>
       <b id="vehicleModel">&mdash;</b>

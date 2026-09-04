@@ -59,6 +59,8 @@ namespace GtaLiveMap
         // Cached between damage lookups.
         private long _nextDamageCheckMs;
         private int _tyresBurst;
+        private string _wheelStates;
+        private string _doorStates;
 
         // Resolved only when the player ped changes, which is once per
         // character switch rather than twenty times a second.
@@ -302,6 +304,12 @@ namespace GtaLiveMap
             float engineHealth = 0f;
             bool onFire = false;
             int tyresBurst = 0;
+            string wheelStates = null;
+            string doorStates = null;
+            float bodyHealth = 0f;
+            float tankHealth = 0f;
+            bool bumperF = false;
+            bool bumperR = false;
             bool engineRunning = false;
             bool lightsOn = false;
             bool highBeams = false;
@@ -360,12 +368,26 @@ namespace GtaLiveMap
                 headlightsGone = Function.Call<bool>(
                     Hash.GET_BOTH_VEHICLE_HEADLIGHTS_DAMAGED, vehicle);
 
-                // Burst tyres, on a throttle -- see DamageCheckIntervalMs.
+                /*
+                 * Per-part damage, on a throttle -- see DamageCheckIntervalMs.
+                 *
+                 * Walking wheels and doors is far too much to pay for twenty
+                 * times a second for something that changes on the scale of a
+                 * crash, so it rides the same throttle the burst-tyre count has
+                 * always used, and the results are cached between checks.
+                 *
+                 * Wheels and doors are reported as compact "position:state"
+                 * lists rather than nested JSON. Only the parts the vehicle
+                 * actually has appear, so a two-door reports two doors and a
+                 * bike reports two wheels -- the client never has to assume a
+                 * layout.
+                 */
                 if (timestampMs >= _nextDamageCheckMs)
                 {
                     _nextDamageCheckMs = timestampMs + DamageCheckIntervalMs;
                     _tyresBurst = 0;
 
+                    StringBuilder wsb = new StringBuilder(48);
                     VehicleWheelCollection wheels = vehicle.Wheels;
                     if (wheels != null)
                     {
@@ -376,15 +398,57 @@ namespace GtaLiveMap
                             {
                                 VehicleWheel w = all[i];
                                 if (w == null) continue;
+
                                 // Punctured counts too: a flat is a flat well
                                 // before the tyre leaves the rim.
-                                if (w.IsBursted || w.IsPunctured) _tyresBurst++;
+                                bool flat = w.IsBursted || w.IsPunctured;
+                                if (flat) _tyresBurst++;
+
+                                string pos = WheelPosition(w.BoneId);
+                                if (pos == null) continue;
+
+                                if (wsb.Length > 0) wsb.Append(',');
+                                wsb.Append(pos).Append(':').Append(flat ? '1' : '0');
                             }
                         }
                     }
+                    _wheelStates = wsb.Length > 0 ? wsb.ToString() : null;
+
+                    StringBuilder dsb = new StringBuilder(48);
+                    VehicleDoorCollection doors = vehicle.Doors;
+                    if (doors != null)
+                    {
+                        VehicleDoor[] all = doors.ToArray();
+                        if (all != null)
+                        {
+                            for (int i = 0; i < all.Length; i++)
+                            {
+                                VehicleDoor d = all[i];
+                                if (d == null) continue;
+
+                                string pos = DoorPosition(d.Index);
+                                if (pos == null) continue;
+
+                                // Broken outranks open: a door on the road is
+                                // not merely ajar.
+                                char state = d.IsBroken ? '2' : (d.IsOpen ? '1' : '0');
+
+                                if (dsb.Length > 0) dsb.Append(',');
+                                dsb.Append(pos).Append(':').Append(state);
+                            }
+                        }
+                    }
+                    _doorStates = dsb.Length > 0 ? dsb.ToString() : null;
                 }
 
                 tyresBurst = _tyresBurst;
+                wheelStates = _wheelStates;
+                doorStates = _doorStates;
+
+                bodyHealth = vehicle.BodyHealth;
+                tankHealth = vehicle.PetrolTankHealth;
+                bumperF = vehicle.IsFrontBumperBrokenOff;
+                bumperR = vehicle.IsRearBumperBrokenOff;
 
                 VehicleModCollection mods = vehicle.Mods;
                 if (mods != null)
@@ -445,6 +509,12 @@ namespace GtaLiveMap
             sb.Append(",\"engineHealth\":").Append(Json.Number(engineHealth));
             sb.Append(",\"onFire\":").Append(Json.Bool(onFire));
             sb.Append(",\"tyresBurst\":").Append(Json.Number(tyresBurst));
+            sb.Append(",\"wheelStates\":").Append(Json.String(wheelStates));
+            sb.Append(",\"doorStates\":").Append(Json.String(doorStates));
+            sb.Append(",\"bodyHealth\":").Append(Json.Number(bodyHealth));
+            sb.Append(",\"tankHealth\":").Append(Json.Number(tankHealth));
+            sb.Append(",\"bumperF\":").Append(Json.Bool(bumperF));
+            sb.Append(",\"bumperR\":").Append(Json.Bool(bumperR));
             sb.Append(",\"engineRunning\":").Append(Json.Bool(engineRunning));
             sb.Append(",\"lightsOn\":").Append(Json.Bool(lightsOn));
             sb.Append(",\"highBeams\":").Append(Json.Bool(highBeams));
@@ -528,6 +598,46 @@ namespace GtaLiveMap
         private static int Clamp255(int v)
         {
             return v < 0 ? 0 : (v > 255 ? 255 : v);
+        }
+
+        /// <summary>
+        /// Short position codes for a wheel, so the client can put a flat on
+        /// the right corner. Anything with no meaningful position -- a spare,
+        /// or an unmapped bone -- is skipped rather than guessed at.
+        /// </summary>
+        private static string WheelPosition(VehicleWheelBoneId bone)
+        {
+            switch (bone)
+            {
+                case VehicleWheelBoneId.WheelLeftFront:    return "lf";
+                case VehicleWheelBoneId.WheelRightFront:   return "rf";
+                case VehicleWheelBoneId.WheelLeftRear:     return "lr";
+                case VehicleWheelBoneId.WheelRightRear:    return "rr";
+                case VehicleWheelBoneId.WheelLeftMiddle1:  return "lm1";
+                case VehicleWheelBoneId.WheelRightMiddle1: return "rm1";
+                case VehicleWheelBoneId.WheelLeftMiddle2:  return "lm2";
+                case VehicleWheelBoneId.WheelRightMiddle2: return "rm2";
+                case VehicleWheelBoneId.WheelLeftMiddle3:  return "lm3";
+                case VehicleWheelBoneId.WheelRightMiddle3: return "rm3";
+                default: return null;
+            }
+        }
+
+        /// <summary>
+        /// Short position codes for a door, on the same principle.
+        /// </summary>
+        private static string DoorPosition(VehicleDoorIndex door)
+        {
+            switch (door)
+            {
+                case VehicleDoorIndex.FrontLeftDoor:  return "fl";
+                case VehicleDoorIndex.FrontRightDoor: return "fr";
+                case VehicleDoorIndex.BackLeftDoor:   return "bl";
+                case VehicleDoorIndex.BackRightDoor:  return "br";
+                case VehicleDoorIndex.Hood:           return "hood";
+                case VehicleDoorIndex.Trunk:          return "boot";
+                default: return null;
+            }
         }
 
         private static string Clean(string value)

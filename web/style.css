@@ -795,3 +795,47 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
   font-size: 23px;
   letter-spacing: .04em;
 }
+
+/* ------------------------------------------------------------------ */
+/* Damage schematic                                                    */
+/* ------------------------------------------------------------------ */
+/*
+ * Stacked above the vehicle card, which means this corner is a column. The
+ * others stay rows.
+ */
+.bottom-left { flex-direction: column; align-items: flex-start; }
+
+/*
+ * No card behind it — it floats over the map, so every part carries its own
+ * dark outline and the whole thing a shadow, the way the trail does.
+ */
+.damage {
+  width: 96px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .85));
+}
+.damage svg { display: block; width: 100%; height: auto; }
+
+.damage-caption {
+  margin-bottom: 5px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: rgba(11, 14, 18, .88);
+  color: var(--bad);
+  font: 700 11px/1.25 system-ui, sans-serif;
+  letter-spacing: .02em;
+  text-align: center;
+}
+
+/* Green is healthy here, unlike the tell-tales: this is a condition readout,
+   so the whole traffic-light range is in play and green earns its meaning. */
+.d-part    { fill: var(--good); stroke: #0b0e12; stroke-width: 1.6; }
+.d-outline { fill: none; stroke: var(--good); stroke-width: 3.5; }
+
+.d-part.warn    { fill: var(--star); }
+.d-part.bad     { fill: var(--bad); }
+.d-outline.warn { stroke: var(--star); }
+.d-outline.bad  { stroke: var(--bad); }
+
+/* A part the vehicle does not have is not drawn at all, rather than shown
+   intact and quietly lying about the car. */
+.d-part.absent, .d-outline.absent { display: none; }

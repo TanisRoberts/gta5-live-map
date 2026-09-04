@@ -57,13 +57,18 @@ and useful immediately, and it proves the data before any drawing work.
 
 Three pieces, increasing in difficulty.
 
-**3a. Quest markers.** Surface the game's own blips (missions, activities,
-shops) on the map. The plugin side is the new work — the snapshot currently
-carries only the player. SHVDN exposes the active blips, with a position, a
-sprite id and a colour each; those need reading **on the script thread** like
-everything else, serialising into the feed, and mapping sprite ids to icons on
-the client. Blips change rarely compared to the player, so they want their own
-endpoint or a lower update rate, not the 20 Hz position payload.
+**3a. Quest markers.** Surface the game's own blips on the map. The plugin side
+is the new work: read them **on the script thread** like everything else,
+serialise into the feed, and map sprite ids to icons on the client. Blips change
+rarely compared to the player, so they want their own endpoint or a lower update
+rate, not the 20 Hz position payload.
+
+**Scoped down by what a census actually found** (see DELIVERED.md): there are
+only about 19 blips in the world at a time, `Blip.Name` is empty on every one of
+them, and shop icons like Los Santos Customs are not blips at all. So this
+surfaces position, sprite and colour, and any label has to come from a table of
+our own keyed on `BlipSprite`. The player's own blip must be excluded — it is
+always nearest, at distance zero, and unnamed.
 
 **3b. Manual markers.** Drop pins on the map and have them persist, client-side
 only. Independent of the plugin, so it can be done any time.

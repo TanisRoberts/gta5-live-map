@@ -369,6 +369,27 @@ the moment you are in. A real signal would have to be derived by watching the
 player enter a vehicle and recording the circumstances. The tell-tale was
 dropped rather than left showing a flag that never lights.
 
+**There is no way to name the shop you are standing in.** Two routes were
+tried against a save parked inside Los Santos Customs.
+
+`GET_INTERIOR_FROM_ENTITY` plus `GET_INTERIOR_LOCATION_AND_NAMEHASH` does
+work — it returned a stable, specific `-1070602979` — but it is a hash of an
+internal name like `v_carmod3`, so it needs both a table to resolve the hash
+and a second hand-written map from that to something readable.
+
+Blips looked better, since `Blip.Name` is a readable string and `BlipSprite`
+has named values including `LosSantosCustoms = 72`. It is not: a census found
+only **19 blips in the entire world** — Player, North, PersonalVehicleCar,
+Safehouse, Chop, Golf, Waypoint, StripClub and similar — with **every single
+name empty**. There was no Los Santos Customs blip within 250 metres of
+standing inside one, so shop icons are not script blips in single player at
+all.
+
+**This changes the scope of item 3a.** Quest markers can be surfaced by sprite,
+but the game will not supply their names, so any label has to come from a table
+of our own keyed on `BlipSprite`. The player's own blip also has to be excluded
+explicitly — it is always the nearest, at distance zero.
+
 **There is no readable maximum RPM**, and no readable redline. `CurrentRPM` is
 normalised 0..1, which is its own percentage.
 

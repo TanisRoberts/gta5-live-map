@@ -53,6 +53,36 @@ Three things to settle rather than discover later:
 Worth building the parts list first and the schematic second: the list is honest
 and useful immediately, and it proves the data before any drawing work.
 
+## 10. Full end-to-end QA audit
+
+A critical pass over the whole app, not the per-change checks each item has
+had. Those verify the thing just built; nothing has yet verified the whole
+working together, and several bugs here were only found by accident.
+
+Worth covering:
+
+- **Every HUD element against real gameplay**, including states that have
+  never been seen in situ: five-star vignette, arrest marker, aircraft and
+  boat trails, a vehicle with no make, a custom-coloured vehicle.
+- **The startup paths**, which are the least exercised: first run with no
+  map extracted, no plate artwork, no portraits, a stale manifest, and a
+  cleared browser profile.
+- **Failure and recovery**: plugin reloaded mid-session, game paused and
+  resumed, feed lost and restored, browser tab hidden for a long period.
+- **The setup tool end to end** on a clean output folder, since it has only
+  ever been run incrementally.
+- **Payload and cost**: what the feed actually costs at 20 Hz now that it
+  carries damage, and whether anything is being sent that nothing reads.
+
+Two lessons from this project that should shape it:
+
+- **A silent failure looks like a stale render.** app.js once threw before
+  the poll loop started, and every value on screen was simply the HTML
+  default. What exposed it was counting `/pos` requests, not reading the UI.
+- **Test in a visible tab.** A hidden tab throttles timers to once a second
+  and then once a minute, and pauses `requestAnimationFrame` entirely. It
+  has invalidated several test runs already.
+
 ## 3. Quest markers, manual markers, and navigation
 
 Three pieces, increasing in difficulty.

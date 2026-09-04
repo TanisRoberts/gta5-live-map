@@ -738,8 +738,13 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
  * something dark of its own to sit on over the roads.
  */
 .trail-event svg {
-  width: 23px; height: 23px;
-  fill: #ffffff;
+  width: 24px; height: 24px;
+  /* Stroke rather than fill: these come from Tabler, which is a stroke set. */
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   filter: drop-shadow(0 0 1.5px #0b0e12)
           drop-shadow(0 0 3px rgba(0, 0, 0, .95))
           drop-shadow(0 1px 2px rgba(0, 0, 0, .7));
@@ -820,7 +825,10 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
  */
 .damage {
   width: 96px;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .85));
+  /* A white glow, because the parts are outlined in black and black on
+     near-black terrain is invisible. Same trick as the player arrow. */
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, .9))
+          drop-shadow(0 0 5px rgba(255, 255, 255, .45));
 }
 .damage svg { display: block; width: 100%; height: auto; }
 
@@ -835,16 +843,41 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
   text-align: center;
 }
 
-/* Green is healthy here, unlike the tell-tales: this is a condition readout,
-   so the whole traffic-light range is in play and green earns its meaning. */
-.d-part    { fill: var(--good); stroke: #0b0e12; stroke-width: 1.6; }
-.d-outline { fill: none; stroke: var(--good); stroke-width: 3.5; }
+/*
+ * An undamaged part is drawn as an outline only. Filling every healthy part
+ * green made the whole car shout when nothing was wrong; leaving them empty
+ * means the eye goes straight to the parts that are not.
+ *
+ * The outline is black as asked, which needs the white glow on the wrapper to
+ * survive the dark half of the map -- black on near-black terrain is nothing.
+ */
+.d-part {
+  fill: none;
+  stroke: #0b0e12;
+  stroke-width: 1.6;
+}
+.d-outline {
+  fill: none;
+  stroke: #0b0e12;
+  stroke-width: 3;
+}
+/* Engine and fuel tank are stroke icons from Tabler, so they colour by stroke
+   rather than by fill. */
+.d-icon {
+  fill: none;
+  stroke: #0b0e12;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
-.d-part.warn    { fill: var(--star); }
-.d-part.bad     { fill: var(--bad); }
+.d-part.warn  { fill: var(--star); }
+.d-part.bad   { fill: var(--bad); }
 .d-outline.warn { stroke: var(--star); }
 .d-outline.bad  { stroke: var(--bad); }
+.d-icon.warn  { stroke: var(--star); }
+.d-icon.bad   { stroke: var(--bad); }
 
 /* A part the vehicle does not have is not drawn at all, rather than shown
    intact and quietly lying about the car. */
-.d-part.absent, .d-outline.absent { display: none; }
+.d-part.absent, .d-outline.absent, .d-icon.absent { display: none; }

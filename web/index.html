@@ -81,32 +81,33 @@
          wrong — see updateDamage. No card behind it: it floats over the map.
          Parts the vehicle does not have are never drawn. -->
     <div class="damage" id="damage" hidden>
-      <div class="damage-caption" id="damageCaption"></div>
       <svg viewBox="0 0 96 168" aria-hidden="true">
-        <!-- Shell -->
-        <rect id="dmgBody" class="d-outline" x="14" y="2" width="68" height="164" rx="18"/>
+        <!-- Shell. Narrowed to 19..77 so the wheels sit clear of it: when the
+             body was outlined rather than filled, the rails ran straight
+             through the wheels and the whole thing read as clutter. -->
+        <rect id="dmgBody" class="d-outline" x="19" y="2" width="58" height="164" rx="15"/>
         <!-- Bumpers -->
-        <rect id="dmgBumperF" class="d-part" x="20" y="1" width="56" height="6" rx="3"/>
-        <rect id="dmgBumperR" class="d-part" x="20" y="161" width="56" height="6" rx="3"/>
+        <rect id="dmgBumperF" class="d-part" x="24" y="1" width="48" height="6" rx="3"/>
+        <rect id="dmgBumperR" class="d-part" x="24" y="161" width="48" height="6" rx="3"/>
         <!-- Headlights -->
-        <rect id="dmgHeadL" class="d-part" x="24" y="11" width="13" height="6" rx="2"/>
-        <rect id="dmgHeadR" class="d-part" x="59" y="11" width="13" height="6" rx="2"/>
+        <rect id="dmgHeadL" class="d-part" x="26" y="11" width="12" height="6" rx="2"/>
+        <rect id="dmgHeadR" class="d-part" x="58" y="11" width="12" height="6" rx="2"/>
         <!-- Engine and hood -->
-        <g id="dmgEngine" class="d-icon" transform="translate(30 20) scale(1.5)"><path d="M3 10v6" /><path d="M12 5v3" /><path d="M10 5h4" /><path d="M5 13h-2" /><path d="M6 10h2l2 -2h3.382a1 1 0 0 1 .894 .553l1.448 2.894a1 1 0 0 0 .894 .553h1.382v-2h2a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-2v-2h-3v2a1 1 0 0 1 -1 1h-3.465a1 1 0 0 1 -.832 -.445l-1.703 -2.555h-2v-6" /></g>
-        <rect id="dmgHood" class="d-part" x="30" y="53" width="36" height="8" rx="2"/>
-        <!-- Wheels -->
-        <rect id="dmgWheelLf" class="d-part" x="3" y="30" width="14" height="28" rx="4"/>
-        <rect id="dmgWheelRf" class="d-part" x="79" y="30" width="14" height="28" rx="4"/>
-        <rect id="dmgWheelLr" class="d-part" x="3" y="110" width="14" height="28" rx="4"/>
-        <rect id="dmgWheelRr" class="d-part" x="79" y="110" width="14" height="28" rx="4"/>
-        <!-- Doors -->
-        <rect id="dmgDoorFl" class="d-part" x="16" y="66" width="10" height="32" rx="2"/>
-        <rect id="dmgDoorFr" class="d-part" x="70" y="66" width="10" height="32" rx="2"/>
-        <rect id="dmgDoorBl" class="d-part" x="16" y="102" width="10" height="28" rx="2"/>
-        <rect id="dmgDoorBr" class="d-part" x="70" y="102" width="10" height="28" rx="2"/>
+        <g id="dmgEngine" class="d-icon" transform="translate(30 21) scale(1.5)"><path d="M3 10v6" /><path d="M12 5v3" /><path d="M10 5h4" /><path d="M5 13h-2" /><path d="M6 10h2l2 -2h3.382a1 1 0 0 1 .894 .553l1.448 2.894a1 1 0 0 0 .894 .553h1.382v-2h2a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-2v-2h-3v2a1 1 0 0 1 -1 1h-3.465a1 1 0 0 1 -.832 -.445l-1.703 -2.555h-2v-6" /></g>
+        <rect id="dmgHood" class="d-part" x="32" y="54" width="32" height="7" rx="2"/>
+        <!-- Wheels, outside the shell with a clear gap either side -->
+        <rect id="dmgWheelLf" class="d-part" x="3" y="30" width="13" height="26" rx="4"/>
+        <rect id="dmgWheelRf" class="d-part" x="80" y="30" width="13" height="26" rx="4"/>
+        <rect id="dmgWheelLr" class="d-part" x="3" y="112" width="13" height="26" rx="4"/>
+        <rect id="dmgWheelRr" class="d-part" x="80" y="112" width="13" height="26" rx="4"/>
+        <!-- Doors, inside the shell -->
+        <rect id="dmgDoorFl" class="d-part" x="22" y="68" width="9" height="30" rx="2"/>
+        <rect id="dmgDoorFr" class="d-part" x="65" y="68" width="9" height="30" rx="2"/>
+        <rect id="dmgDoorBl" class="d-part" x="22" y="102" width="9" height="26" rx="2"/>
+        <rect id="dmgDoorBr" class="d-part" x="65" y="102" width="9" height="26" rx="2"/>
         <!-- Boot and tank -->
-        <rect id="dmgBoot" class="d-part" x="30" y="120" width="36" height="8" rx="2"/>
-        <g id="dmgTank" class="d-icon" transform="translate(36 132) scale(1.05)"><path d="M14 11h1a2 2 0 0 1 2 2v3a1.5 1.5 0 0 0 3 0v-7l-3 -3" /><path d="M4 20v-14a2 2 0 0 1 2 -2h6a2 2 0 0 1 2 2v14" /><path d="M3 20l12 0" /><path d="M18 7v1a1 1 0 0 0 1 1h1" /><path d="M4 11l10 0" /></g>
+        <rect id="dmgBoot" class="d-part" x="32" y="120" width="32" height="7" rx="2"/>
+        <g id="dmgTank" class="d-icon" transform="translate(36 133) scale(1.02)"><path d="M14 11h1a2 2 0 0 1 2 2v3a1.5 1.5 0 0 0 3 0v-7l-3 -3" /><path d="M4 20v-14a2 2 0 0 1 2 -2h6a2 2 0 0 1 2 2v14" /><path d="M3 20l12 0" /><path d="M18 7v1a1 1 0 0 0 1 1h1" /><path d="M4 11l10 0" /></g>
       </svg>
     </div>
     <div class="vehicle-card" id="vehicleCard" hidden>

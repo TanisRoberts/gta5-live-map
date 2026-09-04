@@ -821,23 +821,12 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
  */
 .damage {
   width: 96px;
-  /* A white glow, because the parts are outlined in black and black on
-     near-black terrain is invisible. Same trick as the player arrow. */
-  filter: drop-shadow(0 0 2px rgba(255, 255, 255, .9))
-          drop-shadow(0 0 5px rgba(255, 255, 255, .45));
+  /* Just enough light behind the black outlines to survive dark terrain.
+     The heavier two-layer glow this replaced made the whole thing look busy. */
+  filter: drop-shadow(0 0 1.2px rgba(255, 255, 255, .55));
 }
 .damage svg { display: block; width: 100%; height: auto; }
 
-.damage-caption {
-  margin-bottom: 5px;
-  padding: 3px 7px;
-  border-radius: 5px;
-  background: rgba(11, 14, 18, .88);
-  color: var(--bad);
-  font: 700 11px/1.25 system-ui, sans-serif;
-  letter-spacing: .02em;
-  text-align: center;
-}
 
 /*
  * An undamaged part is drawn as an outline only. Filling every healthy part

@@ -1910,7 +1910,7 @@ function updateDamage(s) {
     // Clear as well as hide, or the next car briefly wears the last one's
     // injuries before the first update lands.
     el.hidden = true;
-    $('#damageCaption').textContent = '';
+
     return;
   }
 
@@ -1963,8 +1963,13 @@ function updateDamage(s) {
   else if (s.headlightL || s.headlightR) faults.push('Headlight out');
   if (body) faults.push(body === 'bad' ? 'Bodywork wrecked' : 'Bodywork damaged');
 
+  /*
+   * The fault list decides visibility, and becomes the tooltip rather than a
+   * printed caption -- the schematic already says which part is hurt, which
+   * is the useful half, and the words above it were noise.
+   */
   el.hidden = faults.length === 0;
-  $('#damageCaption').textContent = faults[0] || '';
+  el.title = faults.join(', ');
 }
 
 /**

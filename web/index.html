@@ -312,17 +312,27 @@
 <!-- Icon sprite. Inline so there is no extra request and no build step. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
   <defs>
-    <g id="i-cog"><path d="M12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Zm7.4-2.6.9-.7a.7.7 0 0 0 .2-.9l-1.7-3a.7.7 0 0 0-.8-.3l-1.1.4a7.6 7.6 0 0 0-1.6-.9l-.2-1.2a.7.7 0 0 0-.7-.6h-3.4a.7.7 0 0 0-.7.6l-.2 1.2c-.6.2-1.1.5-1.6.9l-1.1-.4a.7.7 0 0 0-.8.3l-1.7 3a.7.7 0 0 0 .2.9l.9.7a7 7 0 0 0 0 1.9l-.9.7a.7.7 0 0 0-.2.9l1.7 3a.7.7 0 0 0 .8.3l1.1-.4c.5.4 1 .7 1.6.9l.2 1.2a.7.7 0 0 0 .7.6h3.4a.7.7 0 0 0 .7-.6l.2-1.2c.6-.2 1.1-.5 1.6-.9l1.1.4a.7.7 0 0 0 .8-.3l1.7-3a.7.7 0 0 0-.2-.9l-.9-.7a7 7 0 0 0 0-1.9Z"/></g>
-    <g id="i-crosshair"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/><path d="M13 2h-2v3.06A7 7 0 0 0 5.06 11H2v2h3.06A7 7 0 0 0 11 18.94V22h2v-3.06A7 7 0 0 0 18.94 13H22v-2h-3.06A7 7 0 0 0 13 5.06Zm-1 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10Z"/></g>
-    <g id="i-trail"><path d="M4 18c3 0 3-4 6-4s3 4 6 4 4-3 4-3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="4" cy="18" r="2"/><circle cx="20" cy="8" r="2"/></g>
-    <g id="i-follow"><path d="M12 2 4.5 20l7.5-4 7.5 4Z"/></g>
-    <g id="i-expand"><path d="M4 9V4h5v2H6v3Zm11-5h5v5h-2V6h-3Zm5 11v5h-5v-2h3v-3ZM9 20H4v-5h2v3h3Z"/></g>
-    <g id="i-eye"><path d="M12 5c-5 0-9 4.5-9 7s4 7 9 7 9-4.5 9-7-4-7-9-7Zm0 11.5A4.5 4.5 0 1 1 12 7.5a4.5 4.5 0 0 1 0 9Zm0-2.2a2.3 2.3 0 1 0 0-4.6 2.3 2.3 0 0 0 0 4.6Z"/></g>
-    <g id="i-eye-off"><path d="M3.3 2 2 3.3l3.2 3.2C3.5 7.9 2.4 9.7 2 11c1 3 5 7 10 7 1.7 0 3.3-.5 4.7-1.2l3 3 1.3-1.3Zm5.4 8 5.3 5.3A4.5 4.5 0 0 1 8.7 10ZM12 5c-1 0-1.9.2-2.8.4l1.7 1.7A4.5 4.5 0 0 1 16.5 12c0 .4 0 .8-.2 1.1l2.7 2.7c1.4-1.2 2.4-2.7 3-3.8-1-3-5-7-10-7Z"/></g>
-    <g id="i-close"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7l1.4-1.4L10.6 10.6l6.3-6.3Z"/></g>
-    <g id="i-turn"><path d="M11 20V9.8L7.4 13.4 6 12l6-6 6 6-1.4 1.4L13 9.8V20Z"/></g>
-    <g id="i-engine"><path d="M6 8h2V6h5v2h2.5L18 6h2v3h2v5h-2v3h-2l-2.5-2H13v2H8v-2H6l-2 2v-3H3v-5h1V6Z"/></g>
-    <g id="i-lights"><path d="M3 5h4.5a7 7 0 0 1 0 14H3Z"/><path d="M14.5 8h5m-5 4h6m-6 4h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
+    <!--
+      Tabler Icons, MIT — see vendor/icons/LICENSE-tabler. Filled where a
+      filled variant exists (buttons and tell-tales read better solid);
+      outline where Tabler ships none, which is why a few differ.
+      Each group carries its own fill/stroke so filled and outline can live
+      side by side; the CSS only sets colour and size.
+    -->
+    <g id="i-cog" fill="currentColor" stroke="none"><path d="M14.647 4.081a.724 .724 0 0 0 1.08 .448c2.439 -1.485 5.23 1.305 3.745 3.744a.724 .724 0 0 0 .447 1.08c2.775 .673 2.775 4.62 0 5.294a.724 .724 0 0 0 -.448 1.08c1.485 2.439 -1.305 5.23 -3.744 3.745a.724 .724 0 0 0 -1.08 .447c-.673 2.775 -4.62 2.775 -5.294 0a.724 .724 0 0 0 -1.08 -.448c-2.439 1.485 -5.23 -1.305 -3.745 -3.744a.724 .724 0 0 0 -.447 -1.08c-2.775 -.673 -2.775 -4.62 0 -5.294a.724 .724 0 0 0 .448 -1.08c-1.485 -2.439 1.305 -5.23 3.744 -3.745a.722 .722 0 0 0 1.08 -.447c.673 -2.775 4.62 -2.775 5.294 0zm-2.647 4.919a3 3 0 1 0 0 6a3 3 0 0 0 0 -6" /> </g>
+    <g id="i-crosshair" fill="currentColor" stroke="none"><path d="M12 1a1 1 0 0 1 1 1v1.055a9.004 9.004 0 0 1 7.946 7.945h1.054a1 1 0 0 1 0 2h-1.055a9.004 9.004 0 0 1 -7.944 7.945l-.001 1.055a1 1 0 0 1 -2 0v-1.055a9.004 9.004 0 0 1 -7.945 -7.944l-1.055 -.001a1 1 0 0 1 0 -2h1.055a9.004 9.004 0 0 1 7.945 -7.945v-1.055a1 1 0 0 1 1 -1m0 4a7 7 0 1 0 0 14a7 7 0 0 0 0 -14m0 3a4 4 0 1 1 -4 4l.005 -.2a4 4 0 0 1 3.995 -3.8" /> </g>
+    <g id="i-trail" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" /> <path d="M19 7a2 2 0 1 0 0 -4a2 2 0 0 0 0 4" /> <path d="M14 5a2 2 0 0 0 -2 2v10a2 2 0 0 1 -2 2" /> </g>
+    <g id="i-follow" fill="currentColor" stroke="none"><path d="M11.092 2.581a1 1 0 0 1 1.754 -.116l.062 .116l8.005 17.365c.198 .566 .05 1.196 -.378 1.615a1.53 1.53 0 0 1 -1.459 .393l-7.077 -2.398l-6.899 2.338a1.535 1.535 0 0 1 -1.52 -.231l-.112 -.1c-.398 -.386 -.556 -.954 -.393 -1.556l.047 -.15l7.97 -17.276z" /> </g>
+    <g id="i-expand" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8v-2a2 2 0 0 1 2 -2h2" /> <path d="M4 16v2a2 2 0 0 0 2 2h2" /> <path d="M16 4h2a2 2 0 0 1 2 2v2" /> <path d="M16 20h2a2 2 0 0 0 2 -2v-2" /> </g>
+    <g id="i-eye" fill="currentColor" stroke="none"><path d="M12 4c4.29 0 7.863 2.429 10.665 7.154l.22 .379l.045 .1l.03 .083l.014 .055l.014 .082l.011 .1v.11l-.014 .111a.992 .992 0 0 1 -.026 .11l-.039 .108l-.036 .075l-.016 .03c-2.764 4.836 -6.3 7.38 -10.555 7.499l-.313 .004c-4.396 0 -8.037 -2.549 -10.868 -7.504a1 1 0 0 1 0 -.992c2.831 -4.955 6.472 -7.504 10.868 -7.504zm0 5a3 3 0 1 0 0 6a3 3 0 0 0 0 -6" /> </g>
+    <g id="i-eye-off" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.585 10.587a2 2 0 0 0 2.829 2.828" /> <path d="M16.681 16.673a8.717 8.717 0 0 1 -4.681 1.327c-3.6 0 -6.6 -2 -9 -6c1.272 -2.12 2.712 -3.678 4.32 -4.674m2.86 -1.146a9.055 9.055 0 0 1 1.82 -.18c3.6 0 6.6 2 9 6c-.666 1.11 -1.379 2.067 -2.138 2.87" /> <path d="M3 3l18 18" /> </g>
+    <g id="i-close" fill="currentColor" stroke="none"><path d="M6.707 5.293l5.293 5.292l5.293 -5.292a1 1 0 0 1 1.414 1.414l-5.292 5.293l5.292 5.293a1 1 0 0 1 -1.414 1.414l-5.293 -5.292l-5.293 5.292a1 1 0 1 1 -1.414 -1.414l5.292 -5.293l-5.292 -5.293a1 1 0 0 1 1.414 -1.414" /> </g>
+    <g id="i-turn" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5l0 14" /> <path d="M16 9l-4 -4" /> <path d="M8 9l4 -4" /> </g>
+    <g id="i-engine" fill="currentColor" stroke="none"><path d="M14 4a1 1 0 0 1 0 2h-1v1h.383a2 2 0 0 1 1.787 1.106l1.45 2.894h.38v-1a1 1 0 0 1 .883 -.993l.117 -.007h2a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-2a1 1 0 0 1 -1 -1v-1h-1v1a2 2 0 0 1 -1.85 1.995l-.15 .005h-3.465a2 2 0 0 1 -1.664 -.89l-1.407 -2.11h-1.464a1 1 0 0 1 -.993 -.883l-.007 -.117v-2h-1v2a1 1 0 0 1 -2 0v-6a1 1 0 1 1 2 0v2h1v-2a1 1 0 0 1 1 -1h1.584l1.709 -1.707a1 1 0 0 1 .576 -.284l.131 -.009h1v-1h-1a1 1 0 1 1 0 -2z" /> </g>
+    <g id="i-lights" fill="currentColor" stroke="none"><path d="M4 11a1 1 0 0 1 .117 1.993l-.117 .007h-1a1 1 0 0 1 -.117 -1.993l.117 -.007h1z" /> <path d="M12 2a1 1 0 0 1 .993 .883l.007 .117v1a1 1 0 0 1 -1.993 .117l-.007 -.117v-1a1 1 0 0 1 1 -1z" /> <path d="M21 11a1 1 0 0 1 .117 1.993l-.117 .007h-1a1 1 0 0 1 -.117 -1.993l.117 -.007h1z" /> <path d="M4.893 4.893a1 1 0 0 1 1.32 -.083l.094 .083l.7 .7a1 1 0 0 1 -1.32 1.497l-.094 -.083l-.7 -.7a1 1 0 0 1 0 -1.414z" /> <path d="M17.693 4.893a1 1 0 0 1 1.497 1.32l-.083 .094l-.7 .7a1 1 0 0 1 -1.497 -1.32l.083 -.094l.7 -.7z" /> <path d="M14 18a1 1 0 0 1 1 1a3 3 0 0 1 -6 0a1 1 0 0 1 .883 -.993l.117 -.007h4z" /> <path d="M12 6a6 6 0 0 1 3.6 10.8a1 1 0 0 1 -.471 .192l-.129 .008h-6a1 1 0 0 1 -.6 -.2a6 6 0 0 1 3.6 -10.8z" /> </g>
+    <g id="i-tyre" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /> <path d="M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /> <path d="M3 12h6" /> <path d="M15 12h6" /> <path d="M13.6 9.4l3.4 -4.8" /> <path d="M10.4 14.6l-3.4 4.8" /> <path d="M7 4.6l3.4 4.8" /> <path d="M13.6 14.6l3.4 4.8" /> </g>
+    <g id="i-sun" fill="currentColor" stroke="none"><path d="M12 19a1 1 0 0 1 .993 .883l.007 .117v1a1 1 0 0 1 -1.993 .117l-.007 -.117v-1a1 1 0 0 1 1 -1z" /> <path d="M18.313 16.91l.094 .083l.7 .7a1 1 0 0 1 -1.32 1.497l-.094 -.083l-.7 -.7a1 1 0 0 1 1.218 -1.567l.102 .07z" /> <path d="M7.007 16.993a1 1 0 0 1 .083 1.32l-.083 .094l-.7 .7a1 1 0 0 1 -1.497 -1.32l.083 -.094l.7 -.7a1 1 0 0 1 1.414 0z" /> <path d="M4 11a1 1 0 0 1 .117 1.993l-.117 .007h-1a1 1 0 0 1 -.117 -1.993l.117 -.007h1z" /> <path d="M21 11a1 1 0 0 1 .117 1.993l-.117 .007h-1a1 1 0 0 1 -.117 -1.993l.117 -.007h1z" /> <path d="M6.213 4.81l.094 .083l.7 .7a1 1 0 0 1 -1.32 1.497l-.094 -.083l-.7 -.7a1 1 0 0 1 1.217 -1.567l.102 .07z" /> <path d="M19.107 4.893a1 1 0 0 1 .083 1.32l-.083 .094l-.7 .7a1 1 0 0 1 -1.497 -1.32l.083 -.094l.7 -.7a1 1 0 0 1 1.414 0z" /> <path d="M12 2a1 1 0 0 1 .993 .883l.007 .117v1a1 1 0 0 1 -1.993 .117l-.007 -.117v-1a1 1 0 0 1 1 -1z" /> <path d="M12 7a5 5 0 1 1 -4.995 5.217l-.005 -.217l.005 -.217a5 5 0 0 1 4.995 -4.783z" /> </g>
+    <g id="i-moon" fill="currentColor" stroke="none"><path d="M12 1.992a10 10 0 1 0 9.236 13.838c.341 -.82 -.476 -1.644 -1.298 -1.31a6.5 6.5 0 0 1 -6.864 -10.787l.077 -.08c.551 -.63 .113 -1.653 -.758 -1.653h-.266l-.068 -.006l-.06 -.002z" /> </g>
     <!-- Crossed bones: Tabler's bone glyph, and the same path mirrored. MIT,
          vendored in vendor/icons/LICENSE-tabler. -->
     <g id="i-death">
@@ -337,9 +347,6 @@
       <path d="M9.6 12.6l2.4 -4.2M14.4 12.6l-2.4 -4.2"/>
       <path d="M10.4 6.2a2 2 0 0 1 3.2 0"/>
     </g>
-    <g id="i-sun"><circle cx="12" cy="12" r="5"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M19.8 4.2l-2.1 2.1M6.3 17.7l-2.1 2.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
-    <g id="i-moon"><path d="M20.7 14.6A9 9 0 0 1 9.4 3.3 9 9 0 1 0 20.7 14.6Z"/></g>
-    <g id="i-tyre"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 3.4a6.6 6.6 0 0 1 6.6 6.6A6.6 6.6 0 1 1 12 5.4Z"/><path d="M12 7.6a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 0 0 0-8.8Zm0 2.2a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4Z"/></g>
   </defs>
 </svg>
 

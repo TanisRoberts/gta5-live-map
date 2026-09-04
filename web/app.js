@@ -689,7 +689,6 @@ function mockTick() {
     engineHealth:       veh ? [1000, 1000, 450, 0][Math.floor(t / 9000) % 4] : 0,
     onFire:             false,
     tyresBurst:         veh ? Math.min(veh.wheels, Math.floor(t / 13000) % 3) : 0,
-    tyreCount:          veh ? veh.wheels : 0,
     // Engine and lights cycle so the tell-tales can be seen changing with the
     // game shut, rather than sitting in one state forever.
     engineRunning:      !!veh,

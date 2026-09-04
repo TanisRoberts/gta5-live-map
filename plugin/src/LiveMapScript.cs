@@ -59,7 +59,6 @@ namespace GtaLiveMap
         // Cached between damage lookups.
         private long _nextDamageCheckMs;
         private int _tyresBurst;
-        private int _tyreCount;
 
         // Resolved only when the player ped changes, which is once per
         // character switch rather than twenty times a second.
@@ -303,7 +302,6 @@ namespace GtaLiveMap
             float engineHealth = 0f;
             bool onFire = false;
             int tyresBurst = 0;
-            int tyreCount = 0;
             bool engineRunning = false;
             bool lightsOn = false;
             bool highBeams = false;
@@ -367,7 +365,6 @@ namespace GtaLiveMap
                 {
                     _nextDamageCheckMs = timestampMs + DamageCheckIntervalMs;
                     _tyresBurst = 0;
-                    _tyreCount = 0;
 
                     VehicleWheelCollection wheels = vehicle.Wheels;
                     if (wheels != null)
@@ -375,7 +372,6 @@ namespace GtaLiveMap
                         VehicleWheel[] all = wheels.GetAllWheels();
                         if (all != null)
                         {
-                            _tyreCount = all.Length;
                             for (int i = 0; i < all.Length; i++)
                             {
                                 VehicleWheel w = all[i];
@@ -389,7 +385,6 @@ namespace GtaLiveMap
                 }
 
                 tyresBurst = _tyresBurst;
-                tyreCount = _tyreCount;
 
                 VehicleModCollection mods = vehicle.Mods;
                 if (mods != null)
@@ -450,7 +445,6 @@ namespace GtaLiveMap
             sb.Append(",\"engineHealth\":").Append(Json.Number(engineHealth));
             sb.Append(",\"onFire\":").Append(Json.Bool(onFire));
             sb.Append(",\"tyresBurst\":").Append(Json.Number(tyresBurst));
-            sb.Append(",\"tyreCount\":").Append(Json.Number(tyreCount));
             sb.Append(",\"engineRunning\":").Append(Json.Bool(engineRunning));
             sb.Append(",\"lightsOn\":").Append(Json.Bool(lightsOn));
             sb.Append(",\"highBeams\":").Append(Json.Bool(highBeams));

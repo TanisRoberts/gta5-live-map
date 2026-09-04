@@ -661,12 +661,19 @@ output { color: var(--muted); min-width: 34px; text-align: right; font-variant-n
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .65))
           drop-shadow(0 0 4px rgba(255, 255, 255, .95));
 }
-/* Tinted to whoever is being played, falling back to the app accent when the
-   character is not one the game names. The white edge is part of the same
-   separation as the glow. */
+/*
+ * Tinted to whoever is being played, falling back to the app accent when the
+ * character is not one the game names.
+ *
+ * The edge is dark and the glow outside it is white, so the arrow separates
+ * both ways round. A white edge alone worked over dark terrain but failed
+ * where it was needed most: Franklin is the palest character colour, and on
+ * the near-white walking trail a pale arrow with a white edge and a white
+ * glow was three pale things stacked, and all but disappeared.
+ */
 .player-marker .body {
   fill: var(--player-colour, var(--accent));
-  stroke: #ffffff;
+  stroke: #0b0e12;
   stroke-width: 1.6;
 }
 

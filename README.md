@@ -26,6 +26,13 @@ gta5-live-map/
 - [x] Stage 2 — web client, driven by the mock feed
 - [x] Stage 3 — the C# plugin (running in-game)
 
+All three stages are done, along with the satnav HUD, the vector-rendered map,
+the in-game clock, plate and portrait artwork, and trail breaks on death.
+
+- **[DELIVERED.md](DELIVERED.md)** — what has shipped, how, and the decisions
+  behind it, including the things that turned out not to be possible.
+- **[TODO.md](TODO.md)** — what is left.
+
 ## Requirements (GTA V **Enhanced**)
 
 This targets **GTA&nbsp;V Enhanced**. Enhanced is a different executable from
